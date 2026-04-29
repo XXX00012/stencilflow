@@ -1,0 +1,519 @@
+INFO: [v++ 60-1548] Creating build summary session with primary output /media/4T/home/xianyijiang/block_single_300/Work/Work.aiecompiler_summary, at Sat Apr 11 20:05:06 2026
+INFO: [v++ 82-10534] Setting option --aie.enable-partition to value 0:50
+INFO: [v++ 82-31] Launching aiecompiler: aiecompiler --config /media/4T/home/xianyijiang/block_single_300/Work/aie_hw.cfg
+                                           AI Engine Compiler
+                                     Version 2023.2 (linux64-bit)
+                                     SW Build 4023990 on 2023-10-12-17:44:32
+                          Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+                          Copyright 2022-2023 Advanced Micro Devices, Inc. All Rights Reserved.
+INFO: [aiecompiler 77-3355] ###[Start]: Reading in platform specification from /usr/xilinx/Vitis/2023.2/base_platforms/xilinx_vck190_base_202320_1/xilinx_vck190_base_202320_1.xpfm
+INFO: [aiecompiler 55-2099] Unable to extract 'pdi_files' from /usr/xilinx/Vitis/2023.2/base_platforms/xilinx_vck190_base_202320_1/hw/hw.xsa to /usr/xilinx/Vitis/2023.2/base_platforms/xilinx_vck190_base_202320_1/hw/extracted/vitis_design_wrapper_0. XSA may not contain 'pdi_files' or the destination directory is read-only
+INFO: [aiecompiler 55-2053] elapsed time for repository (/usr/xilinx/Vivado/2023.2/data/embeddedsw) loading 0 seconds
+INFO: [aiecompiler 77-3354] ###[Finish]:  Reading in platform specification from /usr/xilinx/Vitis/2023.2/base_platforms/xilinx_vck190_base_202320_1/xilinx_vck190_base_202320_1.xpfm
+INFO: [aiecompiler 21-403] Loading part xcvc1902-vsva2197-2MP-e-S
+INFO: [aiecompiler 77-3379] Extracted physical device part from platform is : xcvc1902-vsva2197-2MP-e-S 
+INFO: [aiecompiler 77-297] Cmd Line : /usr/xilinx/Vitis/2023.2/aietools/bin/unwrapped/lnx64.o/aiecompiler --config /media/4T/home/xianyijiang/block_single_300/Work/aie_hw.cfg 
+INFO: [aiecompiler 77-404] Executing Cmd: ${XILINX_VITIS_AIETOOLS}/tps/lnx64/gcc/bin/g++ -E -std=c++17 -D__ADF_FRONTEND__ -D__AIE_ARCH__=10 -I/usr/xilinx/Vitis/2023.2/aietools/include  -I .  -I /usr/xilinx/Vitis/2023.2/aietools/include -I /media/4T/home/xianyijiang/block_single_300/./aie -I /media/4T/home/xianyijiang/block_single_300/./ /media/4T/home/xianyijiang/block_single_300/./aie/TopGraph.cpp > /media/4T/home/xianyijiang/block_single_300/./Work/temp/TopGraph.ii
+INFO: [aiecompiler 77-404] Executing Cmd: graph_preprocessor /media/4T/home/xianyijiang/block_single_300/./Work/temp/TopGraph.ii -o /media/4T/home/xianyijiang/block_single_300/./Work/temp/TopGraph.processed.ii -report-core-dump  -- -std=c++17  -ftemplate-depth=2048  -Wno-return-stack-address  -Wno-missing-declarations  -Wno-parentheses-equality  -Wno-shift-negative-value  
+INFO: [aiecompiler 77-404] Executing Cmd: ${XILINX_VITIS_AIETOOLS}/tps/lnx64/gcc/bin/g++  -std=c++17  -I .  /media/4T/home/xianyijiang/block_single_300/./Work/temp/TopGraph.processed.ii -o /media/4T/home/xianyijiang/block_single_300/./Work/temp/TopGraph.out -L /usr/xilinx/Vitis/2023.2/aietools/lib/lnx64.o -g -O0 -Wl,--unresolved-symbols=ignore-all  -Wno-return-stack-address  -Wno-missing-declarations  -lfxml_meir_frontend  -lfxml_adf_api_frontend 
+INFO: [aiecompiler 77-404] Executing Cmd: /media/4T/home/xianyijiang/block_single_300/./Work/temp/TopGraph.out -I /usr/xilinx/Vitis/2023.2/aietools/include -I /media/4T/home/xianyijiang/block_single_300/./aie -I /media/4T/home/xianyijiang/block_single_300/./ -workdir=/media/4T/home/xianyijiang/block_single_300/./Work -aiearch=aie -log-level=2 --pl-axi-lite=0 --enable-multi-layer=0 --disable-dma-autostart=0 --enable-light-cdo=0 --large-program-memory=0
+INFO: [aiecompiler 77-749] Reading logical device VC1902.json
+Writing AI Engine constraints file '/media/4T/home/xianyijiang/block_single_300/./Work/temp/TopGraph_meir_constraints.json'
+Reading constraints schema from /usr/xilinx/Vitis/2023.2/aietools/data/aietools_constr_schema.json
+INFO: [aiecompiler 77-44894] Executing Cmd: aieir_be --time-passes=0  --disable-om-fifo-insertion=false  --logcfg-file=  --trace-plio-width=64  --pl-freq=450  --show-loggers=false  --fast-nonlinearfloats=false  --broadcast-enable-core=true  --high-performance=false  --kernel-address-location=false  --target=hw --swfifo-threshold=40  --single-mm2s-channel=false  --workdir=/media/4T/home/xianyijiang/block_single_300/./Work  --exit-after=complete  --event-trace-config=  --test-iterations=-1  --stacksize=1024  --known-tripcount=false  --platform=/usr/xilinx/Vitis/2023.2/base_platforms/xilinx_vck190_base_202320_1/xilinx_vck190_base_202320_1.xpfm  --event-trace-custom-config=  --output-archive=libadf.a  --write-partitioned-file=true  --schemafile=AIEGraphSchema.json  --disable-multirate=false  --include="/usr/xilinx/Vitis/2023.2/aietools/include" --include="/media/4T/home/xianyijiang/block_single_300/./aie" --include="/media/4T/home/xianyijiang/block_single_300/./" --fastmath=false  --event-trace-advanced-mapping=0  --lock-fence-mode=1  --enable-reconfig=false  --evaluate-fifo-depth=false  --gen-graph-cleanup=false  --use-canonical-net-names=false  --event-trace-port=gmio --use-phy-shim=true  --xlopt=0  --graph-iterator-event=false  --trace-aiesim-option=0  --mapped-soln-udm=  --optimize-pktids=false  --no-init=false  --adf-api-log-level=2  --num-trace-streams=16  --fast-floats=true  --quiet=false  --exec-timed=0  --Xchess="main:backend.mist2.xargs=-ggraph" --routed-soln-udm=  --large-kernel-program=false  --enable-profiling=false  --runtime-opt=true  --part=  --disable-transform-merge-broadcast=false  --verbose=true  --kernel-compile-replacement=  --event-trace-bounding-box=  --heapsize=1024  --logical-arch=  --enable-reconfig-dma-autostart=false  --nodot-graph=false  --disable-dma-autostart=false  --include-mem-tile=  --disable-transform-broadcast-split=true  --json=/media/4T/home/xianyijiang/block_single_300/./Work/temp/TopGraph.json
+AIEBuild feature license is found.
+INFO: [aiecompiler 77-3355] ###[Start]: Reading in platform specification from /usr/xilinx/Vitis/2023.2/base_platforms/xilinx_vck190_base_202320_1/xilinx_vck190_base_202320_1.xpfm
+INFO: [aiecompiler 55-2099] Unable to extract 'pdi_files' from /usr/xilinx/Vitis/2023.2/base_platforms/xilinx_vck190_base_202320_1/hw/hw.xsa to /usr/xilinx/Vitis/2023.2/base_platforms/xilinx_vck190_base_202320_1/hw/extracted/vitis_design_wrapper_0. XSA may not contain 'pdi_files' or the destination directory is read-only
+INFO: [aiecompiler 55-2053] elapsed time for repository (/usr/xilinx/Vivado/2023.2/data/embeddedsw) loading 0 seconds
+INFO: [aiecompiler 77-3354] ###[Finish]:  Reading in platform specification from /usr/xilinx/Vitis/2023.2/base_platforms/xilinx_vck190_base_202320_1/xilinx_vck190_base_202320_1.xpfm
+INFO: [aiecompiler 21-403] Loading part xcvc1902-vsva2197-2MP-e-S
+INFO: [aiecompiler 77-3379] Extracted physical device part from platform is : xcvc1902-vsva2197-2MP-e-S 
+INFO: [aiecompiler 77-749] Reading logical device VC1902.json
+INFO: [aiecompiler 77-750] Reading physical device xcvc1902-vsva2197-2MP-e-S
+INFO: [aiecompiler 77-951] ###Start:Loading Device Part xcvc1902-vsva2197-2MP-e-S
+INFO: [aiecompiler 77-950] ###Finish(0u 0s 0w):Loading Device Part xcvc1902-vsva2197-2MP-e-S
+INFO: [aiecompiler 77-4400] Finish reading physical device xcvc1902-vsva2197-2MP-e-S
+INFO: [aiecompiler 77-951] ###Start:Loading Device Part xcvc1902-vsva2197-2MP-e-S
+INFO: [aiecompiler 77-950] ###Finish(0u 0s 0w):Loading Device Part xcvc1902-vsva2197-2MP-e-S
+DEBUG:BuildIR:### Building AIEIr 
+INFO: [aiecompiler 77-757] Opening input file: /media/4T/home/xianyijiang/block_single_300/./Work/temp/TopGraph.json
+INFO: [aiecompiler 77-43940] Emitting AIEIr in file: /media/4T/home/xianyijiang/block_single_300/./Work/temp/TopGraph_aieir_dump.txt
+DEBUG:BuildIR:### Done with  Building AIEIr 
+INFO: [aiecompiler 77-656] Processing Graph 'root'
+DEBUG:MultirateAnalysis:### Entering MULTIRATE ANALYSIS pass
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[0] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[1] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[2] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[3] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[4] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[5] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[6] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[7] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[8] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[9] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[10] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[11] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[12] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[13] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[14] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[15] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[16] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[17] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[18] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[19] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[20] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[21] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[22] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[23] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[24] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[25] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[26] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[27] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[28] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[29] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[30] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[31] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[32] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[33] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[34] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[35] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[36] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[37] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[38] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[39] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[40] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[41] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[42] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[43] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[44] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[45] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[46] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[47] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[48] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[49] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[50] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[51] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[52] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[53] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[54] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[55] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[56] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[57] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[58] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[59] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[60] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[61] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[62] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[63] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[64] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[65] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[66] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[67] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[68] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[69] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[70] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[71] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[72] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[73] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[74] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[75] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[76] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[79] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[80] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[81] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[82] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[83] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[84] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[87] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[88] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[85] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[86] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[89] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[90] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[91] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[92] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[93] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[94] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[77] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[78] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[95] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[96] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[97] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[98] is 1.
+INFO: [aiecompiler 77-5917] Repetition count for topStencil.core.hdiff[99] is 1.
+INFO: [aiecompiler 17-14] Message 'aiecompiler 77-5917' appears 100 times and further instances of the messages will be disabled. Use the Tcl command set_msg_config to change the current settings.
+DEBUG:MultirateAnalysis:### Completing MULTIRATE ANALYSIS pass
+DEBUG:TransformIR:### Performing AIEIr transformations on graph 'root'
+DEBUG:TransformIR:### Done with  AIEIr transformations
+DEBUG:ConstraintsProcessor:###Entering Constraints Processor Phase
+DEBUG:ConstraintsProcessor:###Reading Constraints From JSON File /media/4T/home/xianyijiang/block_single_300/./Work/temp/TopGraph_meir_constraints.json
+DEBUG:ConstraintsProcessor:###Done Constraints Processor Phase
+DEBUG:AIEngineDrc:###Enter: DRC Phase
+INFO: [aiecompiler 77-43929] DRC Results: 0 Errors
+DEBUG:AIEngineDrc:###Exit: DRC Phase
+DEBUG:MapperPartitioner:###Entering Mapper Partitioning Phase
+dot: graph is too large for cairo-renderer bitmaps. Scaling by 0.331761 to fit
+INFO: [aiecompiler 77-281] ###Writing Partition Data To JSON File /media/4T/home/xianyijiang/block_single_300/./Work/temp/TopGraph_partition.json
+DEBUG:MapperPartitioner:###Done Mapper Partitioning Phase (1.720000 secs)
+DEBUG:AIEngineUDMData:###Enter: UDM Data Phase
+###Start:Translating MeIr Netlist To UDM Netlist
+###Finish(0.12u 0s 0.12w):Translating AIEIr Netlist To UDM Netlist.
+###Start:Translating Complete AIEIr Netlist To UDM Netlist
+###Finish(0.06u 0s 0.06w):Translating Complete AIEIr Netlist To UDM Netlist
+###Start:Creating Floorplan...
+INFO: [aiecompiler 18-6359] No Clock Expansion Window constraints config file entry for device xcvc1902.  GCLK Deskew mode will be Off and cannot be enabled via GCLK_DESKEW override.
+INFO: [aiecompiler 18-5720] The default GCLK Deskew mode is Off.
+###Finish(1.06u 0.04s 1.12w):Creating Floorplan...
+###Start:Translating Constraints..
+###Finish(0u 0s 0w):Translating Constraints..
+###Start:Translating Constraints..
+###Finish(0.02u 0s 0.02w):Translating Constraints..
+DEBUG:AIEngineUDMData:###Exit: UDM Data Phase
+DEBUG:AIEnginePartitionSolutionAnnotator:###Entering Partition Solution Annotator Phase
+DEBUG:AIEnginePartitionSolutionAnnotator:####### Start Annotating UDM Solution After Partitioning
+DEBUG:AIEngineUDMData:###Start:Writing Complete UDM Netlist To File /media/4T/home/xianyijiang/block_single_300/./Work/temp/TopGraph_aie_full_netlist.aiexn
+DEBUG:AIEngineUDMData:###Finish:Writing Complete UDM Netlist To File /media/4T/home/xianyijiang/block_single_300/./Work/temp/TopGraph_aie_full_netlist.aiexn
+DEBUG:AIEnginePartitionSolutionAnnotator:####### Finish Annotating UDM Solution After Partition
+DEBUG:AIEnginePartitionSolutionAnnotator:###Done Partition Solution Annotator Phase
+DEBUG:PostPartitionDrc:###Enter: Post Partition DRC Phase
+INFO: [aiecompiler 77-43966] Post Partition DRC Results: 0 Errors
+DEBUG:PostPartitionDrc:###Exit: Post Partition DRC Phase
+DEBUG:AIEngineDesignAnalyzer:###Enter: Design Analyzer Phase
+DEBUG:AIEngineDesignAnalyzer:Insert FIFO
+DEBUG:AIEngineDesignAnalyzer:Adding Core local memory colocation constraints
+DEBUG:AIEngineDesignAnalyzer:###Exit: Design Analyzer Phase Finished Successfully
+DEBUG:AIEngineUDMPlacer:###Enter: UDM Mapper Phase
+DEBUG:AIEngineUDMPlacer:###Start: Running UDM Placer
+DEBUG:AIEngineUDMPlacer:###Writing Pre-mapped solDB To JSON File /media/4T/home/xianyijiang/block_single_300/./Work/temp/TopGraph_aie_premapped.aiesol
+DEBUG:AIEngineUDMPlacer:###Writing Placer Constraints To JSON File /media/4T/home/xianyijiang/block_single_300/./Work/temp/TopGraph_aie_constraints_for_placer.aiecst
+Writing AI Engine constraints file '/media/4T/home/xianyijiang/block_single_300/./Work/temp/TopGraph_aie_constraints_for_placer.aiecst'
+Reading constraints schema from /usr/xilinx/Vitis/2023.2/aietools/data/aietools_constr_schema.json
+Starting Vivado AIE Placer. HANENetlist | Checksum 3717851280
+AIENetlist | Total Netlist Checksum: 1177165706
+Number of user loc constraints: 332
+Number of pblock constraints: 1
+Number of other constraints: 0
+ ... Nodes in trace graph = 0 ... 
+No. of channels in cluster PT222: 4
+No. of channels in cluster PT220: 4
+No. of channels in cluster PT219: 4
+No. of channels in cluster PT218: 4
+No. of channels in cluster PT217: 4
+No. of channels in cluster PT216: 4
+No. of channels in cluster PT211: 4
+No. of channels in cluster PT208: 4
+No. of channels in cluster PT207: 4
+No. of channels in cluster PT205: 4
+No. of channels in cluster PT204: 4
+No. of channels in cluster PT202: 4
+No. of channels in cluster PT200: 4
+No. of channels in cluster PT199: 4
+No. of channels in cluster PT197: 4
+No. of channels in cluster PT196: 4
+No. of channels in cluster PT194: 4
+No. of channels in cluster PT193: 4
+No. of channels in cluster PT191: 4
+No. of channels in cluster PT187: 4
+No. of channels in cluster PT186: 4
+No. of channels in cluster PT184: 4
+No. of channels in cluster PT195: 4
+No. of channels in cluster PT182: 4
+No. of channels in cluster PT214: 4
+No. of channels in cluster PT181: 4
+No. of channels in cluster PT177: 4
+No. of channels in cluster PT176: 4
+No. of channels in cluster PT175: 4
+No. of channels in cluster PT30: 4
+No. of channels in cluster PT188: 4
+No. of channels in cluster PT28: 4
+No. of channels in cluster PT280: 4
+No. of channels in cluster PT171: 4
+No. of channels in cluster PT22: 4
+No. of channels in cluster PT107: 4
+No. of channels in cluster PT21: 4
+No. of channels in cluster PT27: 4
+No. of channels in cluster PT19: 4
+No. of channels in cluster PT248: 4
+No. of channels in cluster PT18: 4
+No. of channels in cluster PT69: 4
+No. of channels in cluster PT15: 4
+No. of channels in cluster PT223: 4
+No. of channels in cluster PT73: 4
+No. of channels in cluster PT9: 4
+No. of channels in cluster PT8: 4
+No. of channels in cluster PT178: 4
+No. of channels in cluster PT295: 4
+No. of channels in cluster PT5: 4
+No. of channels in cluster PT4: 4
+No. of channels in cluster PT3: 4
+No. of channels in cluster PT291: 4
+No. of channels in cluster PT103: 4
+No. of channels in cluster PT29: 4
+No. of channels in cluster PT271: 4
+No. of channels in cluster PT185: 4
+No. of channels in cluster PT292: 4
+No. of channels in cluster PT285: 4
+No. of channels in cluster PT284: 4
+No. of channels in cluster PT283: 4
+No. of channels in cluster PT265: 4
+No. of channels in cluster PT290: 4
+No. of channels in cluster PT237: 4
+No. of channels in cluster PT71: 4
+No. of channels in cluster PT269: 4
+No. of channels in cluster PT32: 4
+No. of channels in cluster PT266: 4
+No. of channels in cluster PT274: 4
+No. of channels in cluster PT263: 4
+No. of channels in cluster PT150: 4
+No. of channels in cluster PT260: 4
+No. of channels in cluster PT259: 4
+No. of channels in cluster PT33: 4
+No. of channels in cluster PT108: 4
+No. of channels in cluster PT26: 4
+No. of channels in cluster PT190: 4
+No. of channels in cluster PT116: 4
+No. of channels in cluster PT281: 4
+No. of channels in cluster PT157: 4
+No. of channels in cluster PT133: 4
+No. of channels in cluster PT14: 4
+No. of channels in cluster PT238: 4
+No. of channels in cluster PT142: 4
+No. of channels in cluster PT49: 4
+No. of channels in cluster PT243: 4
+No. of channels in cluster PT101: 4
+No. of channels in cluster PT11: 4
+No. of channels in cluster PT13: 4
+No. of channels in cluster PT145: 4
+No. of channels in cluster PT160: 4
+No. of channels in cluster PT25: 4
+No. of channels in cluster PT140: 4
+No. of channels in cluster PT293: 4
+No. of channels in cluster PT231: 4
+No. of channels in cluster PT1: 4
+No. of channels in cluster PT115: 4
+No. of channels in cluster PT16: 4
+No. of channels in cluster PT262: 4
+No. of channels in cluster PT256: 4
+No. of channels in cluster PT74: 4
+No. of channels in cluster PT287: 4
+No. of channels in cluster PT233: 4
+No. of channels in cluster PT299: 4
+No. of channels in cluster PT255: 4
+No. of channels in cluster PT61: 4
+No. of channels in cluster PT46: 4
+No. of channels in cluster PT6: 4
+No. of channels in cluster PT201: 4
+No. of channels in cluster PT57: 4
+No. of channels in cluster PT289: 4
+No. of channels in cluster PT24: 4
+No. of channels in cluster PT268: 4
+No. of channels in cluster PT245: 4
+No. of channels in cluster PT56: 4
+No. of channels in cluster PT276: 4
+No. of channels in cluster PT209: 4
+No. of channels in cluster PT68: 4
+No. of channels in cluster PT275: 4
+No. of channels in cluster PT179: 4
+No. of channels in cluster PT228: 4
+No. of channels in cluster PT159: 4
+No. of channels in cluster PT232: 4
+No. of channels in cluster PT267: 4
+No. of channels in cluster PT113: 4
+No. of channels in cluster PT38: 4
+No. of channels in cluster PT296: 4
+No. of channels in cluster PT252: 4
+No. of channels in cluster PT112: 4
+No. of channels in cluster PT36: 4
+No. of channels in cluster PT123: 4
+No. of channels in cluster PT79: 4
+No. of channels in cluster PT286: 4
+No. of channels in cluster PT227: 4
+No. of channels in cluster PT172: 4
+No. of channels in cluster PT154: 4
+No. of channels in cluster PT240: 4
+No. of channels in cluster PT35: 4
+No. of channels in cluster PT244: 4
+No. of channels in cluster PT155: 4
+No. of channels in cluster PT12: 4
+No. of channels in cluster PT298: 4
+No. of channels in cluster PT146: 4
+No. of channels in cluster PT225: 4
+No. of channels in cluster PT98: 4
+No. of channels in cluster PT288: 4
+No. of channels in cluster PT137: 4
+No. of channels in cluster PT152: 4
+No. of channels in cluster PT167: 4
+No. of channels in cluster PT272: 4
+No. of channels in cluster PT258: 4
+No. of channels in cluster PT151: 4
+No. of channels in cluster PT0: 4
+No. of channels in cluster PT226: 4
+No. of channels in cluster PT168: 4
+No. of channels in cluster PT261: 4
+No. of channels in cluster PT198: 4
+No. of channels in cluster PT230: 4
+No. of channels in cluster PT294: 4
+No. of channels in cluster PT10: 4
+No. of channels in cluster PT192: 4
+No. of channels in cluster PT264: 4
+No. of channels in cluster PT65: 4
+No. of channels in cluster PT278: 4
+No. of channels in cluster PT282: 4
+No. of channels in cluster PT173: 4
+No. of channels in cluster PT236: 4
+No. of channels in cluster PT47: 4
+No. of channels in cluster PT206: 4
+No. of channels in cluster PT90: 4
+No. of channels in cluster PT242: 4
+No. of channels in cluster PT135: 4
+No. of channels in cluster PT247: 4
+No. of channels in cluster PT138: 4
+No. of channels in cluster PT246: 4
+No. of channels in cluster PT297: 4
+No. of channels in cluster PT72: 4
+No. of channels in cluster PT273: 4
+No. of channels in cluster PT34: 4
+No. of channels in cluster PT51: 4
+No. of channels in cluster PT249: 4
+No. of channels in cluster PT239: 4
+No. of channels in cluster PT277: 4
+No. of channels in cluster PT250: 4
+No. of channels in cluster PT88: 4
+No. of channels in cluster PT270: 4
+No. of channels in cluster PT224: 4
+No. of channels in cluster PT59: 4
+No. of channels in cluster PT257: 4
+No. of channels in cluster PT78: 4
+No. of channels in cluster PT82: 4
+No. of channels in cluster PT251: 4
+No. of channels in cluster PT234: 4
+No. of channels in cluster PT31: 4
+No. of channels in cluster PT229: 4
+No. of channels in cluster PT37: 4
+No. of channels in cluster PT210: 4
+No. of channels in cluster PT95: 4
+No. of channels in cluster PT212: 4
+No. of channels in cluster PT39: 4
+No. of channels in cluster PT84: 4
+No. of channels in cluster PT2: 4
+No. of channels in cluster PT161: 4
+No. of channels in cluster PT215: 4
+No. of channels in cluster PT41: 4
+No. of channels in cluster PT42: 4
+No. of channels in cluster PT48: 4
+No. of channels in cluster PT50: 4
+No. of channels in cluster PT85: 4
+No. of channels in cluster PT148: 4
+No. of channels in cluster PT156: 4
+No. of channels in cluster PT52: 4
+No. of channels in cluster PT53: 4
+No. of channels in cluster PT241: 4
+No. of channels in cluster PT55: 4
+No. of channels in cluster PT58: 4
+No. of channels in cluster PT121: 4
+No. of channels in cluster PT44: 4
+No. of channels in cluster PT62: 4
+No. of channels in cluster PT63: 4
+No. of channels in cluster PT64: 4
+No. of channels in cluster PT66: 4
+No. of channels in cluster PT235: 4
+No. of channels in cluster PT67: 4
+No. of channels in cluster PT75: 4
+No. of channels in cluster PT76: 4
+No. of channels in cluster PT164: 4
+No. of channels in cluster PT60: 4
+No. of channels in cluster PT80: 4
+No. of channels in cluster PT17: 4
+No. of channels in cluster PT81: 4
+No. of channels in cluster PT83: 4
+No. of channels in cluster PT213: 4
+No. of channels in cluster PT87: 4
+No. of channels in cluster PT86: 4
+No. of channels in cluster PT203: 4
+No. of channels in cluster PT77: 4
+No. of channels in cluster PT89: 4
+No. of channels in cluster PT279: 4
+No. of channels in cluster PT45: 4
+No. of channels in cluster PT91: 4
+No. of channels in cluster PT54: 4
+No. of channels in cluster PT92: 4
+No. of channels in cluster PT93: 4
+No. of channels in cluster PT180: 4
+No. of channels in cluster PT94: 4
+No. of channels in cluster PT120: 4
+No. of channels in cluster PT96: 4
+No. of channels in cluster PT97: 4
+No. of channels in cluster PT130: 4
+No. of channels in cluster PT136: 4
+No. of channels in cluster PT153: 4
+No. of channels in cluster PT23: 4
+No. of channels in cluster PT124: 4
+No. of channels in cluster PT99: 4
+No. of channels in cluster PT100: 4
+No. of channels in cluster PT7: 4
+No. of channels in cluster PT143: 4
+No. of channels in cluster PT102: 4
+No. of channels in cluster PT104: 4
+No. of channels in cluster PT40: 4
+No. of channels in cluster PT106: 4
+No. of channels in cluster PT20: 4
+No. of channels in cluster PT109: 4
+No. of channels in cluster PT183: 4
+No. of channels in cluster PT110: 4
+No. of channels in cluster PT111: 4
+No. of channels in cluster PT114: 4
+No. of channels in cluster PT254: 4
+No. of channels in cluster PT117: 4
+No. of channels in cluster PT118: 4
+No. of channels in cluster PT221: 4
+No. of channels in cluster PT119: 4
+No. of channels in cluster PT122: 4
+No. of channels in cluster PT125: 4
+No. of channels in cluster PT169: 4
+No. of channels in cluster PT126: 4
+No. of channels in cluster PT163: 4
+No. of channels in cluster PT105: 4
+No. of channels in cluster PT127: 4
+No. of channels in cluster PT128: 4
+No. of channels in cluster PT129: 4
+No. of channels in cluster PT131: 4
+No. of channels in cluster PT132: 4
+No. of channels in cluster PT134: 4
+No. of channels in cluster PT70: 4
+No. of channels in cluster PT162: 4
+No. of channels in cluster PT139: 4
+No. of channels in cluster PT141: 4
+No. of channels in cluster PT144: 4
+No. of channels in cluster PT147: 4
+No. of channels in cluster PT149: 4
+No. of channels in cluster PT43: 4
+No. of channels in cluster PT158: 4
+No. of channels in cluster PT165: 4
+No. of channels in cluster PT189: 4
+No. of channels in cluster PT253: 4
+No. of channels in cluster PT166: 4
+No. of channels in cluster PT170: 4
+No. of channels in cluster PT174: 4
+Raw Lower utilization: 68.8477
+Lower utilization: 68.8477
+Raw Upper utilization: 68.8477
+Upper utilization: 68.8477
+Check AIE-PRE-MAPPER has run: 0 errors
+AIE Initial Checker Successful
+AIE Mapper Partitioner succeeded.
+INFO: [aiecompiler 47-778] Running Pass 1 of AIE Mapper.
+INFO: [aiecompiler 47-777] Running Global placer
+WARNING: [aiecompiler 47-1265] Placer was unable to find a solution for the problem. Please check constraints and area groups to see if any any of them may be infeasible.
+Global placer did not succeed, trying next pass with relaxed params..
+INFO: [aiecompiler 47-778] Running Pass 2 of AIE Mapper.
+INFO: [aiecompiler 47-777] Running Global placer
+ME Global Placer | Checksum: 1501246981
+ERROR: [aiecompiler 47-1292] Unable to place merge node topStencil.in_merge_last_bcast.
+INFO: [aiecompiler 77-44881] Run completed. Find additional information in:
+	Guidance: /media/4T/home/xianyijiang/block_single_300/./Work/reports/guidance.html
+
+INFO: [aiecompiler 77-44882] Use the vitis_analyzer tool to visualize and navigate the relevant reports. Run: 
+	vitis_analyzer /media/4T/home/xianyijiang/block_single_300/./Work/TopGraph.aiecompile_summary
+
+Compilation Failed
+(WARNING:1, CRITICAL-WARNING:0, ERROR:1)

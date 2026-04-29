@@ -1,0 +1,43 @@
+Sat Apr 11 20:05:05 2026: Running xcd server. This server was built by gradle.
+Sat Apr 11 20:05:05 2026: Server was asked to start on port: '32791'
+Sat Apr 11 20:05:05 2026: Server is using token UUID: 'd750e999-e048-4093-9175-884f93a2f81f'
+Sat Apr 11 20:05:05 2026: SESSION_MGR: creating session with session uuid: '6d04a3e9-ade5-4ab9-8d63-1f78fcd2ec76' and name 'default'
+Sat Apr 11 20:05:05 2026: Attempting to start server on port '32791'
+Sat Apr 11 20:05:05 2026: XCD main fifo: created main fifo '/tmp/xcdmaind750e999-e048-4093-9175-884f93a2f81f', fd read = 13
+Sat Apr 11 20:05:05 2026: Running Dispatch Server
+Sat Apr 11 20:05:05 2026: Version 2.2.0
+Sat Apr 11 20:05:06 2026: Dispatch Server: Accepted socket connection from client
+Sat Apr 11 20:05:06 2026: Starting Socket connection
+Sat Apr 11 20:05:06 2026: EXCHANGE_TOKEN received, server token: d750e999-e048-4093-9175-884f93a2f81f, passed token: d750e999-e048-4093-9175-884f93a2f81f
+Sat Apr 11 20:05:06 2026: DISPATCH_HANDLER: Adding handler from function makeHandler in library libxv_system_diagram
+Sat Apr 11 20:05:06 2026: SESSION_MGR: creating session with session uuid: 'a20fa8b2-428c-4184-b27e-7e9858aac637' and name 'v++_compile_Work'
+Sat Apr 11 20:05:06 2026: KERNEL_SVC: creating session with uuid: 'a20fa8b2-428c-4184-b27e-7e9858aac637' and name 'v++_compile_Work'
+Sat Apr 11 20:05:06 2026: GUIDANCE_SMGR: creating guidance session with uuid: 'a20fa8b2-428c-4184-b27e-7e9858aac637' and name 'v++_compile_Work'
+Sat Apr 11 20:05:06 2026: SYSTEM_DIAGRAM: creating session with uuid: 'a20fa8b2-428c-4184-b27e-7e9858aac637' and name 'v++_compile_Work'
+Sat Apr 11 20:05:25 2026: Dispatch Server: Accepted socket connection from client
+Sat Apr 11 20:05:25 2026: Starting Socket connection
+Sat Apr 11 20:05:25 2026: SESSION_MGR: creating session with session uuid: '49be2d83-5484-41ed-9b45-726126ac178a' and name 'AIE Compilation'
+Sat Apr 11 20:05:25 2026: KERNEL_SVC: creating session with uuid: '49be2d83-5484-41ed-9b45-726126ac178a' and name 'AIE Compilation'
+Sat Apr 11 20:05:25 2026: GUIDANCE_SMGR: creating guidance session with uuid: '49be2d83-5484-41ed-9b45-726126ac178a' and name 'AIE Compilation'
+Sat Apr 11 20:05:25 2026: SYSTEM_DIAGRAM: creating session with uuid: '49be2d83-5484-41ed-9b45-726126ac178a' and name 'AIE Compilation'
+Sat Apr 11 20:05:31 2026: Dispatch Server: Accepted socket connection from client
+Sat Apr 11 20:05:31 2026: Starting Socket connection
+Sat Apr 11 20:14:42 2026: SESSION_MGR: closing session for UUID '49be2d83-5484-41ed-9b45-726126ac178a' with name ''
+Sat Apr 11 20:14:42 2026: KERNEL_SVC: closing session for UUID '49be2d83-5484-41ed-9b45-726126ac178a' with name ''
+Sat Apr 11 20:14:42 2026: GUIDANCE_SMGR: closing session for UUID '49be2d83-5484-41ed-9b45-726126ac178a' with name ''
+Sat Apr 11 20:14:42 2026: SYSTEM_DIAGRAM: closing session for UUID '49be2d83-5484-41ed-9b45-726126ac178a' with name ''
+Sat Apr 11 20:14:43 2026: SESSION_MGR: closing session for UUID 'a20fa8b2-428c-4184-b27e-7e9858aac637' with name 'v++_compile_Work'
+Sat Apr 11 20:14:43 2026: KERNEL_SVC: closing session for UUID 'a20fa8b2-428c-4184-b27e-7e9858aac637' with name 'v++_compile_Work'
+Sat Apr 11 20:14:43 2026: GUIDANCE_SMGR: closing session for UUID 'a20fa8b2-428c-4184-b27e-7e9858aac637' with name 'v++_compile_Work'
+Sat Apr 11 20:14:43 2026: SYSTEM_DIAGRAM: closing session for UUID 'a20fa8b2-428c-4184-b27e-7e9858aac637' with name 'v++_compile_Work'
+Sat Apr 11 20:14:43 2026: STOP_SERVER received, server token: d750e999-e048-4093-9175-884f93a2f81f, passed token: d750e999-e048-4093-9175-884f93a2f81f
+Sat Apr 11 20:14:43 2026: Socket received request to stop server.
+Sat Apr 11 20:14:43 2026: Dispatch Server: do_await_stop
+Sat Apr 11 20:14:43 2026: Dispatch Server: stopping mainFifo_
+Sat Apr 11 20:14:43 2026: XCD main fifo: Stopping
+Sat Apr 11 20:14:43 2026: XCD main fifo: do_read error code: Operation canceled
+Sat Apr 11 20:14:43 2026: XCD main fifo: bytes_transferred: 0
+Sat Apr 11 20:14:43 2026: SERVER: destructor for server bound to port 32791
+Sat Apr 11 20:14:43 2026: XCD main fifo: Good unlink of /tmp/xcdmaind750e999-e048-4093-9175-884f93a2f81f
+Sat Apr 11 20:14:43 2026: Server exiting with status 0.
+Sat Apr 11 20:14:43 2026: Closing log file.
