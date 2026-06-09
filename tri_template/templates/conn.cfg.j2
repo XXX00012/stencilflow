@@ -1,0 +1,11 @@
+[connectivity]
+# {{ project }}: {{ toppl_cus }} TopPL CU(s), each owns {{ lanes_per_pl }} consecutive AIE lanes.
+nk=TopPL:{{ toppl_cus }}:{% for cu in range(toppl_cus) %}TopPL_{{ cu + 1 }}{% if not loop.last %}.{% endif %}{% endfor %}
+
+{% for cu in range(toppl_cus) %}
+{% for lane in range(lanes_per_pl) %}
+{% set global_lane = cu * lanes_per_pl + lane %}
+stream_connect=TopPL_{{ cu + 1 }}.to_aie{{ lane }}:ai_engine_0.stencil_in{{ global_lane }}
+stream_connect=ai_engine_0.stencil_out{{ global_lane }}:TopPL_{{ cu + 1 }}.from_aie{{ lane }}:16
+{% endfor %}
+{% endfor %}

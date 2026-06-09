@@ -1,0 +1,478 @@
+// tri_384plio board path:
+//   DDR raw 256x256x64 int32 volume
+//       -> 16 TopPL repackers, 8 lanes each
+//       -> 128 AIE lanes, each graph.run(132)
+//       -> TopPL output packers drop raw rows 0..3
+//       -> DDR compact 256x256x64 int32 volume.
+
+#include "TopGraph.h"
+#include "ProcessUnit/include.h"
+
+#include <adf/adf_api/XRTConfig.h>
+#include <experimental/xrt_bo.h>
+#include <experimental/xrt_device.h>
+#include <experimental/xrt_kernel.h>
+
+#include <array>
+#include <atomic>
+#include <chrono>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <exception>
+#include <fstream>
+#include <stdexcept>
+#include <string>
+#include <thread>
+#include <vector>
+
+TopStencilGraph topStencil("stencil");
+
+namespace {
+
+constexpr int NUM_UNITS = STENCIL_NUM_UNITS;
+constexpr int GRID_ROWS = 256;
+constexpr int GRID_DEPTH = 64;
+constexpr int LANES_PER_DEPTH = 2;
+constexpr int ROWS_PER_LANE = GRID_ROWS / LANES_PER_DEPTH;
+constexpr int WARMUP_ROWS = hdiff_cfg::kLapWarmupIterations;
+constexpr int DEFAULT_ITER = hdiff_cfg::kDefaultIterations;
+constexpr int PL_KERNELS = 16;
+constexpr int LANES_PER_PL = 8;
+constexpr int PREVIEW = 16;
+constexpr int DIAG_POLL_MS = 1000;
+constexpr int VOLUME_ELEMS = GRID_DEPTH * GRID_ROWS * COL;
+constexpr std::size_t VOLUME_BYTES =
+    static_cast<std::size_t>(VOLUME_ELEMS) * sizeof(std::int32_t);
+
+static_assert(NUM_UNITS == 128,
+              "tri_384plio host expects 128 AIE lanes");
+static_assert(STENCIL_TOTAL_CORES == 384, "tri_384plio must use 384 AIE cores");
+static_assert(NUM_UNITS == GRID_DEPTH * LANES_PER_DEPTH,
+              "lanes must map to depth planes x row parts");
+static_assert(GRID_ROWS % LANES_PER_DEPTH == 0,
+              "row count must divide evenly across row parts");
+static_assert(LANES_PER_PL == 8, "host expects eight lanes per TopPL CU");
+static_assert(DEFAULT_ITER == ROWS_PER_LANE + WARMUP_ROWS,
+              "graph run count must be useful rows plus warmup rows");
+
+using Clock = std::chrono::high_resolution_clock;
+using WaitFlagArray = std::array<std::atomic_bool, PL_KERNELS>;
+
+struct PipelineTiming {
+    long long bo_to_device_us = 0;
+    long long submit_us = 0;
+    long long wait_us = 0;
+    long long hardware_run_us = 0;
+    long long bo_from_device_us = 0;
+    long long end_to_end_us = 0;
+};
+
+long long elapsed_us(Clock::time_point start, Clock::time_point stop) {
+    return std::chrono::duration_cast<std::chrono::microseconds>(stop - start)
+        .count();
+}
+
+bool load_volume_file(const std::string& path, std::vector<std::int32_t>& buf) {
+    std::ifstream fin(path);
+    if (!fin.is_open()) {
+        std::fprintf(stderr, "[error] cannot open %s\n", path.c_str());
+        return false;
+    }
+
+    buf.assign(VOLUME_ELEMS, 0);
+    long long v = 0;
+    int cnt = 0;
+    while (cnt < VOLUME_ELEMS && (fin >> v)) {
+        buf[cnt++] = static_cast<std::int32_t>(v);
+    }
+
+    if (cnt != VOLUME_ELEMS) {
+        std::fprintf(stderr,
+                     "[error] %s element count mismatch: got %d, expect %d\n",
+                     path.c_str(),
+                     cnt,
+                     VOLUME_ELEMS);
+        return false;
+    }
+
+    if (fin >> v) {
+        std::fprintf(stderr,
+                     "[error] %s has extra elements after expected %d\n",
+                     path.c_str(),
+                     VOLUME_ELEMS);
+        return false;
+    }
+
+    return true;
+}
+
+void dump_volume_matrix(const std::string& path, const std::int32_t* data) {
+    std::ofstream fout(path);
+    if (!fout.is_open()) {
+        std::fprintf(stderr, "[warn] cannot open %s for write\n", path.c_str());
+        return;
+    }
+
+    for (int r = 0; r < GRID_DEPTH * GRID_ROWS; ++r) {
+        const std::int32_t* row = data + r * COL;
+        for (int c = 0; c < COL; ++c) {
+            if (c) fout << ' ';
+            fout << row[c];
+        }
+        fout << '\n';
+    }
+}
+
+void print_preview(const char* tag, const std::int32_t* p, int n) {
+    std::printf("%s", tag);
+    for (int i = 0; i < n; ++i) {
+        std::printf(" %d", p[i]);
+    }
+    std::printf("\n");
+}
+
+xrt::kernel open_toppl_kernel(const xrt::device& device,
+                              const xrt::uuid& uuid,
+                              int cu_index) {
+    char scoped[64];
+    std::snprintf(scoped,
+                  sizeof(scoped),
+                  "TopPL:{TopPL_%d}",
+                  cu_index + 1);
+
+    try {
+        return xrt::kernel(device, uuid, scoped);
+    } catch (const std::exception&) {
+        char cu_only[32];
+        std::snprintf(cu_only, sizeof(cu_only), "TopPL_%d", cu_index + 1);
+        try {
+            return xrt::kernel(device, uuid, cu_only);
+        } catch (const std::exception&) {
+            if (cu_index == 0) {
+                return xrt::kernel(device, uuid, "TopPL");
+            }
+            throw std::runtime_error(std::string("cannot open TopPL CU ") +
+                                     std::to_string(cu_index + 1));
+        }
+    }
+}
+
+void print_mapping_summary(const std::string& input_path,
+                           const std::string& output_path,
+                           int iter_cnt) {
+    std::printf("mapping               : DDR -> TopPL repacker -> 128 AIE lanes -> TopPL packer -> DDR\n");
+    std::printf("input volume          : %d depth x %d rows x %d cols = %d int32\n",
+                GRID_DEPTH,
+                GRID_ROWS,
+                COL,
+                VOLUME_ELEMS);
+    std::printf("input file            : %s\n", input_path.c_str());
+    std::printf("output file           : %s\n", output_path.c_str());
+    std::printf("AIE lanes             : %d lanes, %d lanes/depth, %d rows/lane\n",
+                NUM_UNITS,
+                LANES_PER_DEPTH,
+                ROWS_PER_LANE);
+    std::printf("PL kernels            : %d TopPL CUs, %d lanes/CU\n",
+                PL_KERNELS,
+                LANES_PER_PL);
+    std::printf("graph.run             : %d; raw rows/lane=%d, keep raw rows %d..%d\n",
+                iter_cnt,
+                iter_cnt,
+                WARMUP_ROWS,
+                iter_cnt - 1);
+    std::printf("lane 0 input rows     : -2..129, keep DDR rows 0..127\n");
+    std::printf("lane 1 input rows     : 126..257, keep DDR rows 128..255\n");
+}
+
+void print_timing(const PipelineTiming& timing) {
+    std::printf("---- Timing summary (host wall us): tri_384plio ----\n");
+    std::printf("h2d_sync_us          : %lld\n", timing.bo_to_device_us);
+    std::printf("submit_us            : %lld\n", timing.submit_us);
+    std::printf("wait_us              : %lld\n", timing.wait_us);
+    std::printf("hardware_run_us      : %lld\n", timing.hardware_run_us);
+    std::printf("d2h_sync_us          : %lld\n", timing.bo_from_device_us);
+    std::printf("end_to_end_us        : %lld\n", timing.end_to_end_us);
+}
+
+bool all_toppl_done(const WaitFlagArray& done) {
+    for (int i = 0; i < PL_KERNELS; ++i) {
+        if (!done[i].load(std::memory_order_relaxed)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool any_toppl_failed(const WaitFlagArray& failed) {
+    for (int i = 0; i < PL_KERNELS; ++i) {
+        if (failed[i].load(std::memory_order_relaxed)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool all_waits_done(const WaitFlagArray& toppl_done,
+                    const std::atomic_bool& graph_done) {
+    return all_toppl_done(toppl_done) &&
+           graph_done.load(std::memory_order_relaxed);
+}
+
+void print_wait_status(const WaitFlagArray& toppl_done,
+                       const WaitFlagArray& toppl_failed,
+                       const std::atomic_bool& graph_done,
+                       const std::atomic_bool& graph_failed,
+                       long long elapsed_ms) {
+    std::printf("[diag] wait_status elapsed_ms=%lld graph=%s%s pending_toppl=",
+                elapsed_ms,
+                graph_done.load(std::memory_order_relaxed) ? "done" : "pending",
+                graph_failed.load(std::memory_order_relaxed) ? "(failed)" : "");
+
+    bool any_pending = false;
+    for (int i = 0; i < PL_KERNELS; ++i) {
+        if (!toppl_done[i].load(std::memory_order_relaxed)) {
+            std::printf("%s%d(lanes%d-%d)",
+                        any_pending ? "," : "",
+                        i + 1,
+                        i * LANES_PER_PL,
+                        (i + 1) * LANES_PER_PL - 1);
+            any_pending = true;
+        }
+    }
+    if (!any_pending) {
+        std::printf("none");
+    }
+
+    std::printf(" failed_toppl=");
+    bool any_failed = false;
+    for (int i = 0; i < PL_KERNELS; ++i) {
+        if (toppl_failed[i].load(std::memory_order_relaxed)) {
+            std::printf("%s%d", any_failed ? "," : "", i + 1);
+            any_failed = true;
+        }
+    }
+    if (!any_failed) {
+        std::printf("none");
+    }
+    std::printf("\n");
+    std::fflush(stdout);
+}
+
+} // namespace
+
+int main(int argc, char* argv[]) {
+    if (argc < 2) {
+        std::fprintf(stderr,
+                     "Usage: %s <xclbin> [iter_cnt] [input_txt] [output_txt]\n",
+                     argv[0]);
+        return EXIT_FAILURE;
+    }
+
+    const std::string xclbin_path = argv[1];
+    const int iter_cnt = (argc >= 3) ? std::atoi(argv[2]) : DEFAULT_ITER;
+    const std::string input_path =
+        (argc >= 4) ? argv[3] : "./board_data/input.txt";
+    const std::string output_path =
+        (argc >= 5) ? argv[4] : "./aie_out_pl.txt";
+
+    if (iter_cnt != DEFAULT_ITER) {
+        std::fprintf(stderr,
+                     "[error] tri_384plio expects iter_cnt=%d "
+                     "(%d useful rows/lane + %d warmup rows), got %d\n",
+                     DEFAULT_ITER,
+                     ROWS_PER_LANE,
+                     WARMUP_ROWS,
+                     iter_cnt);
+        return EXIT_FAILURE;
+    }
+
+    std::vector<std::int32_t> input_volume;
+    if (!load_volume_file(input_path, input_volume)) {
+        return EXIT_FAILURE;
+    }
+
+    print_mapping_summary(input_path, output_path, iter_cnt);
+    print_preview("input preview        :", input_volume.data(), PREVIEW);
+
+    bool graph_initialized = false;
+
+    try {
+        auto device = xrt::device(0);
+        auto xrt_uuid = device.load_xclbin(xclbin_path);
+
+        auto dhdl = xrtDeviceOpenFromXcl(device);
+        if (!dhdl) {
+            std::fprintf(stderr, "[error] xrtDeviceOpenFromXcl failed\n");
+            return EXIT_FAILURE;
+        }
+
+        xuid_t adf_uuid;
+        xrtDeviceGetXclbinUUID(dhdl, adf_uuid);
+        adf::registerXRT(dhdl, adf_uuid);
+
+        std::vector<xrt::kernel> toppl_kernels;
+        toppl_kernels.reserve(PL_KERNELS);
+        for (int i = 0; i < PL_KERNELS; ++i) {
+            toppl_kernels.emplace_back(open_toppl_kernel(device, xrt_uuid, i));
+        }
+
+        auto input_bo =
+            xrt::bo(device, VOLUME_BYTES, toppl_kernels[0].group_id(0));
+        auto output_bo =
+            xrt::bo(device, VOLUME_BYTES, toppl_kernels[0].group_id(1));
+        auto input_map = input_bo.map<std::int32_t*>();
+        auto output_map = output_bo.map<std::int32_t*>();
+
+        std::memcpy(input_map, input_volume.data(), VOLUME_BYTES);
+        std::memset(output_map, 0, VOLUME_BYTES);
+
+        PipelineTiming timing;
+        const auto end_to_end_t0 = Clock::now();
+
+        auto stage_t0 = Clock::now();
+        input_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+        output_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+        timing.bo_to_device_us = elapsed_us(stage_t0, Clock::now());
+
+        std::printf("---- TopPL + TopStencilGraph ----\n");
+        std::printf("PL input              : raw DDR int32[%d]\n", VOLUME_ELEMS);
+        std::printf("PL repack             : per lane input rows = output block start - 2, length %d; OOB rows zero-filled\n", iter_cnt);
+        std::printf("AIE compute           : 128 lanes x 3 kernels, graph.run(%d)\n", iter_cnt);
+        std::printf("PL output pack        : read %d raw rows/lane, drop raw rows 0..%d, store %d rows/lane\n",
+                    iter_cnt,
+                    WARMUP_ROWS - 1,
+                    ROWS_PER_LANE);
+        std::fflush(stdout);
+
+        std::printf("[stage] topStencil.init begin\n");
+        std::fflush(stdout);
+        topStencil.init();
+        graph_initialized = true;
+        std::printf("[stage] topStencil.init done\n");
+        std::fflush(stdout);
+
+        const auto hw_t0 = Clock::now();
+
+        std::vector<xrt::run> toppl_runs;
+        toppl_runs.reserve(PL_KERNELS);
+        stage_t0 = Clock::now();
+        std::printf("[stage] TopPL submit begin\n");
+        std::fflush(stdout);
+        for (int i = 0; i < PL_KERNELS; ++i) {
+            const int lane_base = i * LANES_PER_PL;
+            toppl_runs.emplace_back(toppl_kernels[i](input_bo,
+                                                     output_bo,
+                                                     lane_base));
+        }
+        timing.submit_us = elapsed_us(stage_t0, Clock::now());
+        std::printf("[stage] TopPL submit done\n");
+        std::fflush(stdout);
+
+        std::printf("[stage] topStencil.run begin\n");
+        std::fflush(stdout);
+        topStencil.run(iter_cnt);
+        std::printf("[stage] topStencil.run done\n");
+        std::fflush(stdout);
+
+        stage_t0 = Clock::now();
+        std::printf("[stage] wait begin\n");
+        std::fflush(stdout);
+
+        WaitFlagArray toppl_done;
+        WaitFlagArray toppl_failed;
+        for (int i = 0; i < PL_KERNELS; ++i) {
+            toppl_done[i].store(false, std::memory_order_relaxed);
+            toppl_failed[i].store(false, std::memory_order_relaxed);
+        }
+        std::atomic_bool graph_done(false);
+        std::atomic_bool graph_failed(false);
+
+        std::vector<std::thread> wait_threads;
+        wait_threads.reserve(PL_KERNELS + 1);
+        for (int i = 0; i < PL_KERNELS; ++i) {
+            wait_threads.emplace_back([&, i]() {
+                std::printf("[stage] TopPL_%d wait begin\n", i + 1);
+                std::fflush(stdout);
+                try {
+                    toppl_runs[i].wait();
+                    toppl_done[i].store(true, std::memory_order_relaxed);
+                    std::printf("[stage] TopPL_%d wait done\n", i + 1);
+                    std::fflush(stdout);
+                } catch (const std::exception& ex) {
+                    toppl_failed[i].store(true, std::memory_order_relaxed);
+                    toppl_done[i].store(true, std::memory_order_relaxed);
+                    std::fprintf(stderr,
+                                 "[error] TopPL_%d wait failed: %s\n",
+                                 i + 1,
+                                 ex.what());
+                    std::fflush(stderr);
+                }
+            });
+        }
+
+        wait_threads.emplace_back([&]() {
+            std::printf("[stage] graph wait begin\n");
+            std::fflush(stdout);
+            try {
+                topStencil.wait();
+                graph_done.store(true, std::memory_order_relaxed);
+                std::printf("[stage] graph wait done\n");
+                std::fflush(stdout);
+            } catch (const std::exception& ex) {
+                graph_failed.store(true, std::memory_order_relaxed);
+                graph_done.store(true, std::memory_order_relaxed);
+                std::fprintf(stderr,
+                             "[error] graph wait failed: %s\n",
+                             ex.what());
+                std::fflush(stderr);
+            }
+        });
+
+        while (!all_waits_done(toppl_done, graph_done)) {
+            std::this_thread::sleep_for(
+                std::chrono::milliseconds(DIAG_POLL_MS));
+            print_wait_status(toppl_done,
+                              toppl_failed,
+                              graph_done,
+                              graph_failed,
+                              elapsed_us(stage_t0, Clock::now()) / 1000);
+        }
+
+        for (auto& thread : wait_threads) {
+            thread.join();
+        }
+
+        if (any_toppl_failed(toppl_failed) ||
+            graph_failed.load(std::memory_order_relaxed)) {
+            throw std::runtime_error("TopPL or graph wait failed");
+        }
+        timing.wait_us = elapsed_us(stage_t0, Clock::now());
+
+        topStencil.end();
+        graph_initialized = false;
+        timing.hardware_run_us = elapsed_us(hw_t0, Clock::now());
+
+        stage_t0 = Clock::now();
+        output_bo.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+        timing.bo_from_device_us = elapsed_us(stage_t0, Clock::now());
+        timing.end_to_end_us = elapsed_us(end_to_end_t0, Clock::now());
+
+        print_preview("output preview       :", output_map, PREVIEW);
+        dump_volume_matrix(output_path, output_map);
+        print_timing(timing);
+        std::printf("output dumped         : %s\n", output_path.c_str());
+    } catch (const std::exception& ex) {
+        if (graph_initialized) {
+            try {
+                topStencil.end();
+            } catch (...) {
+            }
+        }
+        std::fprintf(stderr, "[error] XRT/AIE execution failed: %s\n", ex.what());
+        return EXIT_FAILURE;
+    }
+
+    return EXIT_SUCCESS;
+}

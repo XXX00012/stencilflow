@@ -2,63 +2,73 @@
 #include "./ProcessUnit/include.h"
 
 #include <adf/adf_api/XRTConfig.h>
+#include <experimental/xrt_bo.h>
 #include <experimental/xrt_device.h>
 #include <experimental/xrt_kernel.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <exception>
 #include <fstream>
+#include <stdexcept>
 #include <string>
+#include <vector>
 
-TopStencilGraph topStencil;
+TopStencilGraph topStencil("stencil");
 
 namespace {
 
-constexpr int NUM_INPUTS = 5;
-constexpr int DEFAULT_ITER = 2;
+constexpr int DEFAULT_ITER = 6;
 constexpr int PREVIEW = 16;
-
-// 当前 tri kernel / graph 的最终输出只有 COL 个 int32
+constexpr int WARMUP_ROWS = hdiff_cfg::kLapWarmupIterations;
 constexpr int OUT_WORDS_PER_ITER = COL;
 
-bool load_stream_file(const std::string& path, int32_t* buf, int elems) {
+using Clock = std::chrono::high_resolution_clock;
+
+long long elapsed_us(Clock::time_point start, Clock::time_point stop) {
+    return std::chrono::duration_cast<std::chrono::microseconds>(stop - start)
+        .count();
+}
+
+bool load_input_file(const std::string& path, std::vector<std::int32_t>& buf) {
     std::ifstream fin(path);
     if (!fin.is_open()) {
-        std::fprintf(stderr, "[warn] cannot open %s\n", path.c_str());
+        std::fprintf(stderr, "[error] cannot open %s\n", path.c_str());
         return false;
     }
 
     long long v = 0;
     int cnt = 0;
-    while (fin >> v) {
-        if (cnt >= elems) break;
-        buf[cnt++] = static_cast<int32_t>(v);
+    while (cnt < static_cast<int>(buf.size()) && (fin >> v)) {
+        buf[cnt++] = static_cast<std::int32_t>(v);
     }
 
-    if (cnt != elems) {
+    if (cnt != static_cast<int>(buf.size())) {
         std::fprintf(stderr,
-                     "[warn] %s element count mismatch: got %d, expect %d\n",
-                     path.c_str(), cnt, elems);
+                     "[error] %s element count mismatch: got %d, expect %zu\n",
+                     path.c_str(),
+                     cnt,
+                     buf.size());
         return false;
     }
+
+    if (fin >> v) {
+        std::fprintf(stderr,
+                     "[warn] %s has extra elements after expected %zu; ignored\n",
+                     path.c_str(),
+                     buf.size());
+    }
+
     return true;
 }
 
-void fill_ramp_inputs(int32_t* inbuf[NUM_INPUTS], int elems_per_input) {
-    for (int k = 0; k < NUM_INPUTS; ++k) {
-        for (int i = 0; i < elems_per_input; ++i) {
-            inbuf[k][i] = static_cast<int32_t>(k * 10000 + i);
-        }
-    }
-}
-
-void zero_output(int32_t* out, int elems) {
-    for (int i = 0; i < elems; ++i) out[i] = 0;
-}
-
-void dump_output_matrix(const std::string& path, const int32_t* out, int iter_cnt) {
+void dump_output_matrix(const std::string& path,
+                        const std::int32_t* out,
+                        int iter_cnt) {
     std::ofstream fout(path);
     if (!fout.is_open()) {
         std::fprintf(stderr, "[warn] cannot open %s for write\n", path.c_str());
@@ -66,7 +76,7 @@ void dump_output_matrix(const std::string& path, const int32_t* out, int iter_cn
     }
 
     for (int it = 0; it < iter_cnt; ++it) {
-        const int32_t* row = out + it * OUT_WORDS_PER_ITER;
+        const std::int32_t* row = out + it * OUT_WORDS_PER_ITER;
         for (int c = 0; c < COL; ++c) {
             if (c) fout << ' ';
             fout << row[c];
@@ -75,7 +85,7 @@ void dump_output_matrix(const std::string& path, const int32_t* out, int iter_cn
     }
 }
 
-void print_preview(const char* tag, const int32_t* p, int n) {
+void print_preview(const char* tag, const std::int32_t* p, int n) {
     std::printf("%s", tag);
     for (int i = 0; i < n; ++i) {
         std::printf(" %d", p[i]);
@@ -83,154 +93,156 @@ void print_preview(const char* tag, const int32_t* p, int n) {
     std::printf("\n");
 }
 
+xrt::kernel open_toppl_kernel(const xrt::device& device,
+                              const xrt::uuid& uuid) {
+    try {
+        return xrt::kernel(device, uuid, "TopPL:{TopPL_1}");
+    } catch (const std::exception&) {
+        try {
+            return xrt::kernel(device, uuid, "TopPL_1");
+        } catch (const std::exception&) {
+            return xrt::kernel(device, uuid, "TopPL");
+        }
+    }
+}
+
 } // namespace
 
 int main(int argc, char* argv[]) {
     if (argc < 2) {
         std::fprintf(stderr,
-                     "Usage: %s <xclbin> [iter_cnt] [input_prefix] [output_txt]\n",
+                     "Usage: %s <xclbin> [iter_cnt] [input_txt] [output_txt]\n",
                      argv[0]);
         return EXIT_FAILURE;
     }
 
     const std::string xclbin_path = argv[1];
-    const int iter_cnt            = (argc >= 3) ? std::atoi(argv[2]) : DEFAULT_ITER;
-    const std::string in_prefix   = (argc >= 4) ? argv[3] : "./data/hdiff";
-    const std::string out_path    = (argc >= 5) ? argv[4] : "./data/aie_out_gmio.txt";
+    const int iter_cnt = (argc >= 3) ? std::atoi(argv[2]) : DEFAULT_ITER;
+    const std::string input_path =
+        (argc >= 4) ? argv[3] : "./data/input.txt";
+    const std::string output_path =
+        (argc >= 5) ? argv[4] : "./aie_out_plio.txt";
 
     if (iter_cnt <= 0) {
         std::fprintf(stderr, "[error] iter_cnt must be > 0\n");
         return EXIT_FAILURE;
     }
-
-    const int elems_per_input = iter_cnt * COL;
-    const int out_elems       = iter_cnt * OUT_WORDS_PER_ITER;
-
-    const std::size_t bytes_per_input = elems_per_input * sizeof(int32_t);
-    const std::size_t out_bytes       = out_elems * sizeof(int32_t);
-
-    auto dhdl = xrtDeviceOpen(0);
-    if (!dhdl) {
-        std::fprintf(stderr, "[error] xrtDeviceOpen failed\n");
+    if (iter_cnt <= WARMUP_ROWS) {
+        std::fprintf(stderr,
+                     "[error] iter_cnt must be greater than warmup rows %d\n",
+                     WARMUP_ROWS);
         return EXIT_FAILURE;
     }
 
-    int ret = xrtDeviceLoadXclbinFile(dhdl, xclbin_path.c_str());
-    if (ret) {
-        std::fprintf(stderr, "[error] xrtDeviceLoadXclbinFile failed\n");
-        xrtDeviceClose(dhdl);
+    const int input_elems = iter_cnt * COL;
+    const int output_rows = iter_cnt - WARMUP_ROWS;
+    const int output_elems = output_rows * OUT_WORDS_PER_ITER;
+    const std::size_t input_bytes =
+        static_cast<std::size_t>(input_elems) * sizeof(std::int32_t);
+    const std::size_t output_bytes =
+        static_cast<std::size_t>(output_elems) * sizeof(std::int32_t);
+
+    std::vector<std::int32_t> input(input_elems, 0);
+    if (!load_input_file(input_path, input)) {
         return EXIT_FAILURE;
     }
 
-    xuid_t uuid;
-    xrtDeviceGetXclbinUUID(dhdl, uuid);
-    adf::registerXRT(dhdl, uuid);
+    print_preview("input preview        :", input.data(),
+                  std::min(PREVIEW, input_elems));
+    std::printf("mapping              : DDR -> TopPL -> 1 AIE PLIO lane -> TopPL -> DDR\n");
+    std::printf("input rows           : %d x %d int32\n", iter_cnt, COL);
+    std::printf("graph.run            : %d; keep raw output rows %d..%d\n",
+                iter_cnt,
+                WARMUP_ROWS,
+                iter_cnt - 1);
+    std::fflush(stdout);
 
-    int32_t* inbuf[NUM_INPUTS] = {nullptr, nullptr, nullptr, nullptr, nullptr};
-    for (int i = 0; i < NUM_INPUTS; ++i) {
-        inbuf[i] = reinterpret_cast<int32_t*>(adf::GMIO::malloc(bytes_per_input));
-        if (!inbuf[i]) {
-            std::fprintf(stderr, "[error] GMIO::malloc failed for input %d\n", i);
-            for (int j = 0; j < i; ++j) adf::GMIO::free(inbuf[j]);
-            xrtDeviceClose(dhdl);
+    bool graph_initialized = false;
+
+    try {
+        auto device = xrt::device(0);
+        auto xrt_uuid = device.load_xclbin(xclbin_path);
+
+        auto dhdl = xrtDeviceOpenFromXcl(device);
+        if (!dhdl) {
+            std::fprintf(stderr, "[error] xrtDeviceOpenFromXcl failed\n");
             return EXIT_FAILURE;
         }
-    }
 
-    int32_t* outbuf = reinterpret_cast<int32_t*>(adf::GMIO::malloc(out_bytes));
-    if (!outbuf) {
-        std::fprintf(stderr, "[error] GMIO::malloc failed for output\n");
-        for (int i = 0; i < NUM_INPUTS; ++i) adf::GMIO::free(inbuf[i]);
-        xrtDeviceClose(dhdl);
-        return EXIT_FAILURE;
-    }
+        xuid_t adf_uuid;
+        xrtDeviceGetXclbinUUID(dhdl, adf_uuid);
+        adf::registerXRT(dhdl, adf_uuid);
 
-    bool ok = true;
-    for (int i = 0; i < NUM_INPUTS; ++i) {
-        const std::string path = in_prefix + "_in" + std::to_string(i) + "_stream.txt";
-        if (!load_stream_file(path, inbuf[i], elems_per_input)) {
-            ok = false;
-        }
-    }
-    if (!ok) {
-        std::fprintf(stderr, "[warn] input files incomplete, fallback to ramp input\n");
-        fill_ramp_inputs(inbuf, elems_per_input);
-    }
+        auto toppl = open_toppl_kernel(device, xrt_uuid);
+        auto input_bo = xrt::bo(device, input_bytes, toppl.group_id(0));
+        auto output_bo = xrt::bo(device, output_bytes, toppl.group_id(1));
 
-    zero_output(outbuf, out_elems);
-    print_preview("input0 preview:", inbuf[0], PREVIEW);
+        auto input_map = input_bo.map<std::int32_t*>();
+        auto output_map = output_bo.map<std::int32_t*>();
+        std::memcpy(input_map, input.data(), input_bytes);
+        std::memset(output_map, 0, output_bytes);
 
-    topStencil.init();
-    auto t0 = std::chrono::high_resolution_clock::now();
+        const auto t0 = Clock::now();
+        input_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+        output_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
-    topStencil.run(iter_cnt);
+        std::printf("[stage] topStencil.init begin\n");
+        std::fflush(stdout);
+        topStencil.init();
+        graph_initialized = true;
+        std::printf("[stage] topStencil.init done\n");
+        std::fflush(stdout);
 
-    // 当前 tri kernel 只输出真实 stencil 结果
-    topStencil.out0.aie2gm_nb(outbuf, out_bytes);
+        const auto hw_t0 = Clock::now();
 
-    adf::event::handle handle = adf::event::start_profiling(
-        topStencil.out0,
-        adf::event::io_stream_start_to_bytes_transferred_cycles,
-        static_cast<uint32_t>(out_bytes));
+        std::printf("[stage] TopPL submit begin\n");
+        std::fflush(stdout);
+        auto toppl_run = toppl(input_bo, output_bo, iter_cnt);
+        std::printf("[stage] TopPL submit done\n");
+        std::fflush(stdout);
 
-    if (handle == adf::event::invalid_handle) {
-        std::fprintf(stderr,
-                     "[error] invalid profiling handle "
-                     "(likely no available performance counters on this interface tile)\n");
+        std::printf("[stage] topStencil.run begin\n");
+        std::fflush(stdout);
+        topStencil.run(iter_cnt);
+        std::printf("[stage] topStencil.run done\n");
+        std::fflush(stdout);
+
+        std::printf("[stage] TopPL wait begin\n");
+        std::fflush(stdout);
+        toppl_run.wait();
+        std::printf("[stage] TopPL wait done\n");
+        std::fflush(stdout);
+
+        std::printf("[stage] graph wait begin\n");
+        std::fflush(stdout);
+        topStencil.wait();
+        std::printf("[stage] graph wait done\n");
+        std::fflush(stdout);
+
         topStencil.end();
-        for (int i = 0; i < NUM_INPUTS; ++i) {
-            adf::GMIO::free(inbuf[i]);
+        graph_initialized = false;
+
+        const auto hw_t1 = Clock::now();
+        output_bo.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+        const auto t1 = Clock::now();
+
+        print_preview("output preview       :", output_map,
+                      std::min(PREVIEW, output_elems));
+        dump_output_matrix(output_path, output_map, output_rows);
+
+        std::printf("hardware_run_us      : %lld\n", elapsed_us(hw_t0, hw_t1));
+        std::printf("end_to_end_us        : %lld\n", elapsed_us(t0, t1));
+        std::printf("output dumped        : %s\n", output_path.c_str());
+    } catch (const std::exception& ex) {
+        if (graph_initialized) {
+            try {
+                topStencil.end();
+            } catch (...) {
+            }
         }
-        adf::GMIO::free(outbuf);
-        xrtDeviceClose(dhdl);
+        std::fprintf(stderr, "[error] XRT/AIE execution failed: %s\n", ex.what());
         return EXIT_FAILURE;
     }
 
-    topStencil.in0.gm2aie_nb(inbuf[0], bytes_per_input);
-    topStencil.in1.gm2aie_nb(inbuf[1], bytes_per_input);
-    topStencil.in2.gm2aie_nb(inbuf[2], bytes_per_input);
-    topStencil.in3.gm2aie_nb(inbuf[3], bytes_per_input);
-    topStencil.in4.gm2aie_nb(inbuf[4], bytes_per_input);
-
-    topStencil.out0.wait();
-    topStencil.wait();
-
-    long long cycle_count = adf::event::read_profiling(handle);
-    adf::event::stop_profiling(handle);
-
-    const double freq_hz = 450000000.0;
-    const double time_seconds = static_cast<double>(cycle_count) / freq_hz;
-
-    const double output_MBps =
-        static_cast<double>(out_bytes) / time_seconds / (1024.0 * 1024.0);
-
-    const double gross_bytes =
-        static_cast<double>(NUM_INPUTS) * static_cast<double>(bytes_per_input) +
-        static_cast<double>(out_bytes);
-    const double gross_MBps =
-        gross_bytes / time_seconds / (1024.0 * 1024.0);
-
-    std::printf("========================================\n");
-    std::printf("Event API cycles        : %lld\n", cycle_count);
-    std::printf("Output throughput       : %.3f MB/s\n", output_MBps);
-    std::printf("Gross graph throughput  : %.3f MB/s\n", gross_MBps);
-    std::printf("========================================\n");
-
-    auto t1 = std::chrono::high_resolution_clock::now();
-    topStencil.end();
-
-    const auto dur_us =
-        std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
-
-    std::printf("End-to-end time: %lld us\n", static_cast<long long>(dur_us));
-    print_preview("output preview:", outbuf, PREVIEW);
-
-    dump_output_matrix(out_path, outbuf, iter_cnt);
-
-    for (int i = 0; i < NUM_INPUTS; ++i) {
-        adf::GMIO::free(inbuf[i]);
-    }
-    adf::GMIO::free(outbuf);
-    xrtDeviceClose(dhdl);
-    return 0;
+    return EXIT_SUCCESS;
 }

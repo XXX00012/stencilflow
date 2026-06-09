@@ -1,0 +1,217 @@
+#include "../aie/Config.h"
+
+#include <ap_int.h>
+#include <hls_stream.h>
+
+#define TRI_VOLUME_DDR_WORDS {{ volume_ddr_words }}
+
+namespace {
+
+using ddr_word_t = ap_uint<512>;
+using plio_word_t = ap_uint<64>;
+
+constexpr int kGridRows = {{ grid_rows }};
+constexpr int kGridDepth = {{ grid_depth }};
+constexpr int kCols = hdiff_cfg::kRowElems;
+constexpr int kNumLanes = hdiff_cfg::kNumLanes;
+constexpr int kLanesPerDepth = {{ lanes_per_depth }};
+constexpr int kRowsPerLane = kGridRows / kLanesPerDepth;
+constexpr int kWarmupRows = hdiff_cfg::kLapWarmupIterations;
+constexpr int kStencilRadiusRows = kWarmupRows / 2;
+constexpr int kIterations = hdiff_cfg::kDefaultIterations;
+constexpr int kLanesPerPl = {{ lanes_per_pl }};
+
+constexpr int kIntsPerPlioWord = 2;
+constexpr int kIntsPerDdrWord = 16;
+constexpr int kPlioWordsPerDdrWord = kIntsPerDdrWord / kIntsPerPlioWord;
+constexpr int kDdrWordsPerRow = kCols / kIntsPerDdrWord;
+constexpr int kWordsPerLane = kIterations * kDdrWordsPerRow;
+constexpr int kVolumeDdrWords = TRI_VOLUME_DDR_WORDS;
+
+static_assert(kCols == {{ row_elems }}, "{{ project }} TopPL expects {{ row_elems }} columns");
+static_assert(kNumLanes == {{ lanes }}, "{{ project }} TopPL expects {{ lanes }} AIE lanes");
+static_assert(kGridDepth * kLanesPerDepth == kNumLanes,
+              "lane count must match depth split");
+static_assert(kWarmupRows == {{ warmup_rows }}, "{{ project }} TopPL expects {{ warmup_rows }} warmup rows");
+static_assert(kIterations == kRowsPerLane + kWarmupRows,
+              "AIE graph run count must be useful rows plus warmup rows");
+static_assert(kCols % kIntsPerDdrWord == 0,
+              "512-bit DDR packing requires whole rows");
+static_assert(kVolumeDdrWords == kGridDepth * kGridRows * kDdrWordsPerRow,
+              "DDR word depth must match the input volume");
+
+int volume_word_index(int depth, int row, int ddr_word_col) {
+#pragma HLS INLINE
+    return (depth * kGridRows + row) * kDdrWordsPerRow + ddr_word_col;
+}
+
+int lane_depth(int lane) {
+#pragma HLS INLINE
+    return lane / kLanesPerDepth;
+}
+
+int lane_part(int lane) {
+#pragma HLS INLINE
+    return lane % kLanesPerDepth;
+}
+
+void send_ddr_word(ddr_word_t word, hls::stream<plio_word_t>& out) {
+#pragma HLS INLINE
+    for (int i = 0; i < kPlioWordsPerDdrWord; ++i) {
+#pragma HLS PIPELINE II=1
+        const plio_word_t packed = word.range((i + 1) * 64 - 1, i * 64);
+        out.write(packed);
+    }
+}
+
+ddr_word_t recv_ddr_word(hls::stream<plio_word_t>& in) {
+#pragma HLS INLINE
+    ddr_word_t word = 0;
+    for (int i = 0; i < kPlioWordsPerDdrWord; ++i) {
+#pragma HLS PIPELINE II=1
+        const plio_word_t packed = in.read();
+        word.range((i + 1) * 64 - 1, i * 64) = packed;
+    }
+    return word;
+}
+
+template <int LaneOffset>
+ddr_word_t lane_input_word(const ddr_word_t* input,
+                           int lane_base,
+                           int raw_r,
+                           int ddr_word_col) {
+#pragma HLS INLINE
+    const int lane = lane_base + LaneOffset;
+    const int depth = lane_depth(lane);
+    const int part = lane_part(lane);
+    const int out_start_row = part * kRowsPerLane;
+    const int src_start_row = out_start_row - kStencilRadiusRows;
+    const int src_row = src_start_row + raw_r;
+
+    if ((src_row >= 0) && (src_row < kGridRows)) {
+        return input[volume_word_index(depth, src_row, ddr_word_col)];
+    }
+    return 0;
+}
+
+template <int LaneOffset>
+void store_lane_output_word(ddr_word_t* output,
+                            int lane_base,
+                            int raw_r,
+                            int ddr_word_col,
+                            ddr_word_t word) {
+#pragma HLS INLINE
+    const int lane = lane_base + LaneOffset;
+    const int depth = lane_depth(lane);
+    const int part = lane_part(lane);
+    const int out_start_row = part * kRowsPerLane;
+    const int out_row = out_start_row + raw_r - kWarmupRows;
+
+    if (raw_r >= kWarmupRows) {
+        output[volume_word_index(depth, out_row, ddr_word_col)] = word;
+    }
+}
+
+template <int LaneBaseOffset>
+void read_input_group_words(const ddr_word_t* input,
+                            int lane_base,
+                            hls::stream<ddr_word_t>& lane0,
+                            hls::stream<ddr_word_t>& lane1,
+                            hls::stream<ddr_word_t>& lane2,
+                            hls::stream<ddr_word_t>& lane3) {
+#pragma HLS INLINE off
+    for (int raw_r = 0; raw_r < kIterations; ++raw_r) {
+        for (int w = 0; w < kDdrWordsPerRow; ++w) {
+            lane0.write(lane_input_word<LaneBaseOffset + 0>(input, lane_base, raw_r, w));
+            lane1.write(lane_input_word<LaneBaseOffset + 1>(input, lane_base, raw_r, w));
+            lane2.write(lane_input_word<LaneBaseOffset + 2>(input, lane_base, raw_r, w));
+            lane3.write(lane_input_word<LaneBaseOffset + 3>(input, lane_base, raw_r, w));
+        }
+    }
+}
+
+void send_lane_words(hls::stream<ddr_word_t>& lane_words,
+                     hls::stream<plio_word_t>& to_aie) {
+#pragma HLS INLINE off
+    for (int i = 0; i < kWordsPerLane; ++i) {
+        send_ddr_word(lane_words.read(), to_aie);
+    }
+}
+
+void write_output_from_aie(ddr_word_t* output,
+                           int lane_base,
+{% for lane in range(lanes_per_pl) %}
+                           hls::stream<plio_word_t>& lane{{ lane }}{% if not loop.last %},{% endif %}
+{% endfor %}
+                           ) {
+#pragma HLS INLINE off
+    for (int raw_r = 0; raw_r < kIterations; ++raw_r) {
+        for (int w = 0; w < kDdrWordsPerRow; ++w) {
+{% for lane in range(lanes_per_pl) %}
+            ddr_word_t word{{ lane }} = 0;
+{% endfor %}
+
+            for (int i = 0; i < kPlioWordsPerDdrWord; ++i) {
+#pragma HLS PIPELINE II=1
+{% for lane in range(lanes_per_pl) %}
+                word{{ lane }}.range((i + 1) * 64 - 1, i * 64) = lane{{ lane }}.read();
+{% endfor %}
+            }
+
+{% for lane in range(lanes_per_pl) %}
+            store_lane_output_word<{{ lane }}>(output, lane_base, raw_r, w, word{{ lane }});
+{% endfor %}
+        }
+    }
+}
+
+} // namespace
+
+extern "C" {
+
+void TopPL(const ddr_word_t* input,
+           ddr_word_t* output,
+           int lane_base,
+{% for lane in range(lanes_per_pl) %}
+           hls::stream<plio_word_t>& to_aie{{ lane }},
+{% endfor %}
+{% for lane in range(lanes_per_pl) %}
+           hls::stream<plio_word_t>& from_aie{{ lane }}{% if not loop.last %},{% endif %}
+{% endfor %}
+           ) {
+#pragma HLS INTERFACE m_axi port=input offset=slave bundle=gmem0 depth=TRI_VOLUME_DDR_WORDS
+#pragma HLS INTERFACE m_axi port=output offset=slave bundle=gmem1 depth=TRI_VOLUME_DDR_WORDS
+#pragma HLS INTERFACE s_axilite port=input bundle=control
+#pragma HLS INTERFACE s_axilite port=output bundle=control
+#pragma HLS INTERFACE s_axilite port=lane_base bundle=control
+#pragma HLS INTERFACE s_axilite port=return bundle=control
+{% for lane in range(lanes_per_pl) %}
+#pragma HLS INTERFACE axis port=to_aie{{ lane }} register_mode=both
+{% endfor %}
+{% for lane in range(lanes_per_pl) %}
+#pragma HLS INTERFACE axis port=from_aie{{ lane }} register_mode=both
+{% endfor %}
+
+{% for lane in range(lanes_per_pl) %}
+    hls::stream<ddr_word_t> in{{ lane }};
+{% endfor %}
+
+{% for lane in range(lanes_per_pl) %}
+#pragma HLS STREAM variable=in{{ lane }} depth=32
+{% endfor %}
+
+#pragma HLS DATAFLOW
+{% for group in range(lanes_per_pl // 4) %}
+    read_input_group_words<{{ group * 4 }}>(input, lane_base,
+                                            in{{ group * 4 }}, in{{ group * 4 + 1 }},
+                                            in{{ group * 4 + 2 }}, in{{ group * 4 + 3 }});
+{% endfor %}
+
+{% for lane in range(lanes_per_pl) %}
+    send_lane_words(in{{ lane }}, to_aie{{ lane }});
+{% endfor %}
+
+    write_output_from_aie(output, lane_base{% for lane in range(lanes_per_pl) %}, from_aie{{ lane }}{% endfor %});
+}
+
+} // extern "C"
