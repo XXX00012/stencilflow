@@ -8,19 +8,31 @@ SHELL := /bin/bash
 .SHELLFLAGS := -e -o pipefail -c
 
 # Makefile input options
-TARGET := hw_emu
+TARGET ?= hw
 
 XO_DIR=./$(TARGET).xo_dir
 XSA_DIR=./$(TARGET).xsa_dir
 PACKAGE_DIR = ./$(TARGET).xclbin_dir
 
 # File names and locations
+KERNEL := TopPL
+KERNEL_SRC := ./pl/$(KERNEL).cpp
+KERNEL_XO := ./pl/$(KERNEL).xo
 
 XSA := ./$(XSA_DIR)/svd.xsa
 HOST_SRC = ./ps/host.cpp
 HOST = host.exe
 XCLBIN = ./$(PACKAGE_DIR)/svd.xclbin
 GRAPH := ./aie/TopGraph.cpp
+GRAPH_DEPS := $(GRAPH) \
+	./aie/TopGraph.h \
+	./aie/Config.h \
+	./aie/ProcessGraph/StencilCoreGraph.h \
+	./aie/ProcessUnit/include.h \
+	./aie/ProcessUnit/hdiff.h \
+	./aie/ProcessUnit/hdiff_lap.cc \
+	./aie/ProcessUnit/hdiff_flux1.cc \
+	./aie/ProcessUnit/hdiff_flux2.cc
 
 GRAPH_O := libadf.a
 CONFIG_FILE := conn.cfg
@@ -53,9 +65,10 @@ else
 endif 
 
 # kernel build config
+VPP_XO_FLAGS := -c -t $(TARGET) --platform $(BASE_PLATFORM) -k $(KERNEL) --save-temps -g
 
 	
-VPP_LINK_FLAGS := -l -t $(TARGET) --platform $(BASE_PLATFORM) $(GRAPH_O) --save-temps -g --config $(CONFIG_FILE) -o $(XSA)
+VPP_LINK_FLAGS := -l -t $(TARGET) --platform $(BASE_PLATFORM) $(GRAPH_O) $(KERNEL_XO) --save-temps -g --config $(CONFIG_FILE) -o $(XSA)
 VPP_LINK_FLAGS += --vivado.impl.jobs 256
 
 VPP_FLAGS := $(VPP_LINK_FLAGS)
@@ -86,14 +99,20 @@ LDCLFLAGS := $(GCC_LIB)
 .PHONY: clean all kernels aie sim xsa host package run_emu
 
 
-all: aie  xsa host package
+all: aie kernels xsa host package
 sd_card: all
 
 ######################################################
 # This step compiles the HLS C kernels and creates the *.xo's 
 # which is used as the output and from the *.cpp files.
 # Note : hw_emu and hw targets use the Unified CLI command to 
-# compile HLS kernels
+######################################################
+# This step compiles the HLS TopPL kernel and creates TopPL.xo.
+kernels: $(KERNEL_XO)
+
+$(KERNEL_XO): $(KERNEL_SRC) ./aie/Config.h
+	mkdir -p $(XO_DIR)
+	$(VPP) $(VPP_XO_FLAGS) -o $(KERNEL_XO) $(KERNEL_SRC) | tee $(XO_DIR)/$(KERNEL).log
 
 
 aie: $(GRAPH_O)
@@ -104,13 +123,12 @@ sim: $(GRAPH_O)
 ifeq ($(TARGET),sw_emu)
 	$(X86SIM) --pkg-dir=./Work --online -wdb
 else
-	$(AIESIM) --pkg-dir=./Work --online -wdb --profile
-# $(AIESIM) --profile --pkg-dir=./Work --online -wdb
+	$(AIESIM) --pkg-dir=./Work --online -wdb
   
 endif
 
 #AIE or X86 compilation
-$(GRAPH_O): $(GRAPH)
+$(GRAPH_O): $(GRAPH_DEPS)
 	$(AIECC) $(AIE_FLAGS) $(GRAPH)
 #####################################################
 
@@ -119,7 +137,7 @@ $(GRAPH_O): $(GRAPH)
 # the hardware part of the design. This creates an xsa
 # that will be used to run the design on the platform.
 xsa: $(XSA)
-$(XSA): 
+$(XSA): $(GRAPH_O) $(KERNEL_XO) $(CONFIG_FILE) Makefile
 	mkdir -p $(XSA_DIR)
 	$(VPP) $(VPP_LINK_FLAGS) || (echo "task: [xsa] failed error code: $$?"; exit 1)
 	@echo "COMPLETE: .xsa created."
@@ -140,7 +158,7 @@ host:
 # Depending on the TARGET, it'll either generate the PDI for sw_emu,hw_emu or hw.
 
 package: $(XCLBIN)
-$(XCLBIN):
+$(XCLBIN): $(XSA) $(GRAPH_O) $(KERNEL_XO) $(HOST) run.sh xrt.ini Makefile
 	mkdir -p $(PACKAGE_DIR)
 	v++ -p -t ${TARGET} \
 		-f ${BASE_PLATFORM} \

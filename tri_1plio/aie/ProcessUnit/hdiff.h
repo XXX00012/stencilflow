@@ -25,8 +25,7 @@ extern "C" {
 
 void hdiff_lap(
     lap_input_buffer& in_window,
-    output_buffer<int32_t>& sub_pack_for_ms,
-    output_buffer<int32_t>& sub_pack_for_sel);
+    output_buffer<int32_t>& sub_pack);
 
 void hdiff_flux1(
     flux1_input_buffer& in_window,

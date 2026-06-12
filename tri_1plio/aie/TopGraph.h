@@ -18,13 +18,13 @@ public:
 
         in_plio[0] = input_plio::create(
             graphID + "_in0",
-            plio_64_bits,
+            plio_128_bits,
             base + "input_plio.txt"
         );
 
         out_plio[0] = output_plio::create(
             graphID + "_out0",
-            plio_64_bits,
+            plio_128_bits,
             base + "TestOutputS.txt"
         );
 

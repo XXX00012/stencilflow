@@ -119,8 +119,7 @@ sim: $(GRAPH_O)
 ifeq ($(TARGET),sw_emu)
 	$(X86SIM) --pkg-dir=./Work --online -wdb
 else
-	$(AIESIM) --pkg-dir=./Work --online -wdb --profile
-# $(AIESIM) --profile --pkg-dir=./Work --online -wdb
+	$(AIESIM) --pkg-dir=./Work --online -wdb
   
 endif
 

@@ -71,9 +71,9 @@ public:
             dimensions(k_lap[lane].in[0])   = {hdiff_cfg::kLapInputSampleElems};
             dimensions(k_flux1[lane].in[0]) = {hdiff_cfg::kFlux1RawInputSampleElems};
             dimensions(k_flux2[lane].in[1]) = {hdiff_cfg::kFlux2RawInputSampleElems};
-            fifo_depth(net_in_lap)           = 2;
-            fifo_depth(net_in_flux1)         = 2;
-            fifo_depth(net_in_flux2)         = 2;
+            fifo_depth(net_in_lap)           = 8;
+            fifo_depth(net_in_flux1)         = 8;
+            fifo_depth(net_in_flux2)         = 8;
 
             auto net_lap_f1 =
                 connect(k_lap[lane].out[0], k_flux1[lane].in[1]);

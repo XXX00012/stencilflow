@@ -41,7 +41,7 @@ constexpr int DEFAULT_ITER = hdiff_cfg::kDefaultIterations;
 constexpr int PL_KERNELS = 16;
 constexpr int LANES_PER_PL = 8;
 constexpr int PREVIEW = 16;
-constexpr int DIAG_POLL_MS = 1000;
+constexpr int DIAG_POLL_MS = 50;
 constexpr int VOLUME_ELEMS = GRID_DEPTH * GRID_ROWS * COL;
 constexpr std::size_t VOLUME_BYTES =
     static_cast<std::size_t>(VOLUME_ELEMS) * sizeof(std::int32_t);
@@ -65,6 +65,7 @@ struct PipelineTiming {
     long long submit_us = 0;
     long long wait_us = 0;
     long long hardware_run_us = 0;
+    long long graph_compute_us = 0;
     long long bo_from_device_us = 0;
     long long end_to_end_us = 0;
 };
@@ -192,6 +193,7 @@ void print_timing(const PipelineTiming& timing) {
     std::printf("submit_us            : %lld\n", timing.submit_us);
     std::printf("wait_us              : %lld\n", timing.wait_us);
     std::printf("hardware_run_us      : %lld\n", timing.hardware_run_us);
+    std::printf("graph_compute_us     : %lld\n", timing.graph_compute_us);
     std::printf("d2h_sync_us          : %lld\n", timing.bo_from_device_us);
     std::printf("end_to_end_us        : %lld\n", timing.end_to_end_us);
 }
@@ -372,6 +374,7 @@ int main(int argc, char* argv[]) {
 
         std::printf("[stage] topStencil.run begin\n");
         std::fflush(stdout);
+        const auto graph_run_t0 = Clock::now();
         topStencil.run(iter_cnt);
         std::printf("[stage] topStencil.run done\n");
         std::fflush(stdout);
@@ -388,6 +391,9 @@ int main(int argc, char* argv[]) {
         }
         std::atomic_bool graph_done(false);
         std::atomic_bool graph_failed(false);
+        std::array<Clock::time_point, PL_KERNELS> toppl_done_t;
+        toppl_done_t.fill(stage_t0);
+        Clock::time_point graph_done_t = stage_t0;
 
         std::vector<std::thread> wait_threads;
         wait_threads.reserve(PL_KERNELS + 1);
@@ -397,6 +403,7 @@ int main(int argc, char* argv[]) {
                 std::fflush(stdout);
                 try {
                     toppl_runs[i].wait();
+                    toppl_done_t[i] = Clock::now();
                     toppl_done[i].store(true, std::memory_order_relaxed);
                     std::printf("[stage] TopPL_%d wait done\n", i + 1);
                     std::fflush(stdout);
@@ -417,6 +424,7 @@ int main(int argc, char* argv[]) {
             std::fflush(stdout);
             try {
                 topStencil.wait();
+                graph_done_t = Clock::now();
                 graph_done.store(true, std::memory_order_relaxed);
                 std::printf("[stage] graph wait done\n");
                 std::fflush(stdout);
@@ -448,11 +456,18 @@ int main(int argc, char* argv[]) {
             graph_failed.load(std::memory_order_relaxed)) {
             throw std::runtime_error("TopPL or graph wait failed");
         }
-        timing.wait_us = elapsed_us(stage_t0, Clock::now());
+        auto last_done_t = graph_done_t;
+        for (int i = 0; i < PL_KERNELS; ++i) {
+            if (toppl_done_t[i] > last_done_t) {
+                last_done_t = toppl_done_t[i];
+            }
+        }
+        timing.wait_us = elapsed_us(stage_t0, last_done_t);
 
         topStencil.end();
         graph_initialized = false;
-        timing.hardware_run_us = elapsed_us(hw_t0, Clock::now());
+        timing.hardware_run_us = elapsed_us(hw_t0, last_done_t);
+        timing.graph_compute_us = elapsed_us(graph_run_t0, graph_done_t);
 
         stage_t0 = Clock::now();
         output_bo.sync(XCL_BO_SYNC_BO_FROM_DEVICE);

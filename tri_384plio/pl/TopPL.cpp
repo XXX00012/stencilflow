@@ -112,20 +112,27 @@ void store_lane_output_word(ddr_word_t* output,
     }
 }
 
-template <int LaneBaseOffset>
-void read_input_group_words(const ddr_word_t* input,
-                            int lane_base,
-                            hls::stream<ddr_word_t>& lane0,
-                            hls::stream<ddr_word_t>& lane1,
-                            hls::stream<ddr_word_t>& lane2,
-                            hls::stream<ddr_word_t>& lane3) {
+void read_input_words(const ddr_word_t* input,
+                      int lane_base,
+                      hls::stream<ddr_word_t>& lane0,
+                      hls::stream<ddr_word_t>& lane1,
+                      hls::stream<ddr_word_t>& lane2,
+                      hls::stream<ddr_word_t>& lane3,
+                      hls::stream<ddr_word_t>& lane4,
+                      hls::stream<ddr_word_t>& lane5,
+                      hls::stream<ddr_word_t>& lane6,
+                      hls::stream<ddr_word_t>& lane7) {
 #pragma HLS INLINE off
     for (int raw_r = 0; raw_r < kIterations; ++raw_r) {
         for (int w = 0; w < kDdrWordsPerRow; ++w) {
-            lane0.write(lane_input_word<LaneBaseOffset + 0>(input, lane_base, raw_r, w));
-            lane1.write(lane_input_word<LaneBaseOffset + 1>(input, lane_base, raw_r, w));
-            lane2.write(lane_input_word<LaneBaseOffset + 2>(input, lane_base, raw_r, w));
-            lane3.write(lane_input_word<LaneBaseOffset + 3>(input, lane_base, raw_r, w));
+            lane0.write(lane_input_word<0>(input, lane_base, raw_r, w));
+            lane1.write(lane_input_word<1>(input, lane_base, raw_r, w));
+            lane2.write(lane_input_word<2>(input, lane_base, raw_r, w));
+            lane3.write(lane_input_word<3>(input, lane_base, raw_r, w));
+            lane4.write(lane_input_word<4>(input, lane_base, raw_r, w));
+            lane5.write(lane_input_word<5>(input, lane_base, raw_r, w));
+            lane6.write(lane_input_word<6>(input, lane_base, raw_r, w));
+            lane7.write(lane_input_word<7>(input, lane_base, raw_r, w));
         }
     }
 }
@@ -138,33 +145,11 @@ void send_lane_words(hls::stream<ddr_word_t>& lane_words,
     }
 }
 
-void recv_lane_quad_words(hls::stream<plio_word_t>& from_aie0,
-                          hls::stream<plio_word_t>& from_aie1,
-                          hls::stream<plio_word_t>& from_aie2,
-                          hls::stream<plio_word_t>& from_aie3,
-                          hls::stream<ddr_word_t>& lane0,
-                          hls::stream<ddr_word_t>& lane1,
-                          hls::stream<ddr_word_t>& lane2,
-                          hls::stream<ddr_word_t>& lane3) {
+void recv_lane_words(hls::stream<plio_word_t>& from_aie,
+                     hls::stream<ddr_word_t>& lane_words) {
 #pragma HLS INLINE off
-    for (int word_idx = 0; word_idx < kWordsPerLane; ++word_idx) {
-        ddr_word_t word0 = 0;
-        ddr_word_t word1 = 0;
-        ddr_word_t word2 = 0;
-        ddr_word_t word3 = 0;
-
-        for (int i = 0; i < kPlioWordsPerDdrWord; ++i) {
-#pragma HLS PIPELINE II=1
-            word0.range((i + 1) * 64 - 1, i * 64) = from_aie0.read();
-            word1.range((i + 1) * 64 - 1, i * 64) = from_aie1.read();
-            word2.range((i + 1) * 64 - 1, i * 64) = from_aie2.read();
-            word3.range((i + 1) * 64 - 1, i * 64) = from_aie3.read();
-        }
-
-        lane0.write(word0);
-        lane1.write(word1);
-        lane2.write(word2);
-        lane3.write(word3);
+    for (int i = 0; i < kWordsPerLane; ++i) {
+        lane_words.write(recv_ddr_word(from_aie));
     }
 }
 
@@ -222,23 +207,7 @@ void TopPL(const ddr_word_t* input,
 #pragma HLS INTERFACE s_axilite port=output bundle=control
 #pragma HLS INTERFACE s_axilite port=lane_base bundle=control
 #pragma HLS INTERFACE s_axilite port=return bundle=control
-#pragma HLS INTERFACE axis port=to_aie0 register_mode=both
-#pragma HLS INTERFACE axis port=to_aie1 register_mode=both
-#pragma HLS INTERFACE axis port=to_aie2 register_mode=both
-#pragma HLS INTERFACE axis port=to_aie3 register_mode=both
-#pragma HLS INTERFACE axis port=to_aie4 register_mode=both
-#pragma HLS INTERFACE axis port=to_aie5 register_mode=both
-#pragma HLS INTERFACE axis port=to_aie6 register_mode=both
-#pragma HLS INTERFACE axis port=to_aie7 register_mode=both
-#pragma HLS INTERFACE axis port=from_aie0 register_mode=both
-#pragma HLS INTERFACE axis port=from_aie1 register_mode=both
-#pragma HLS INTERFACE axis port=from_aie2 register_mode=both
-#pragma HLS INTERFACE axis port=from_aie3 register_mode=both
-#pragma HLS INTERFACE axis port=from_aie4 register_mode=both
-#pragma HLS INTERFACE axis port=from_aie5 register_mode=both
-#pragma HLS INTERFACE axis port=from_aie6 register_mode=both
-#pragma HLS INTERFACE axis port=from_aie7 register_mode=both
-
+#pragma HLS INTERFACE axis port=to_aie0#pragma HLS INTERFACE axis port=to_aie1#pragma HLS INTERFACE axis port=to_aie2#pragma HLS INTERFACE axis port=to_aie3#pragma HLS INTERFACE axis port=to_aie4#pragma HLS INTERFACE axis port=to_aie5#pragma HLS INTERFACE axis port=to_aie6#pragma HLS INTERFACE axis port=to_aie7#pragma HLS INTERFACE axis port=from_aie0#pragma HLS INTERFACE axis port=from_aie1#pragma HLS INTERFACE axis port=from_aie2#pragma HLS INTERFACE axis port=from_aie3#pragma HLS INTERFACE axis port=from_aie4#pragma HLS INTERFACE axis port=from_aie5#pragma HLS INTERFACE axis port=from_aie6#pragma HLS INTERFACE axis port=from_aie7
     hls::stream<ddr_word_t> in0;
     hls::stream<ddr_word_t> in1;
     hls::stream<ddr_word_t> in2;
@@ -274,8 +243,7 @@ void TopPL(const ddr_word_t* input,
 #pragma HLS STREAM variable=out7 depth=16
 
 #pragma HLS DATAFLOW
-    read_input_group_words<0>(input, lane_base, in0, in1, in2, in3);
-    read_input_group_words<4>(input, lane_base, in4, in5, in6, in7);
+    read_input_words(input, lane_base, in0, in1, in2, in3, in4, in5, in6, in7);
 
     send_lane_words(in0, to_aie0);
     send_lane_words(in1, to_aie1);
@@ -286,10 +254,14 @@ void TopPL(const ddr_word_t* input,
     send_lane_words(in6, to_aie6);
     send_lane_words(in7, to_aie7);
 
-    recv_lane_quad_words(from_aie0, from_aie1, from_aie2, from_aie3,
-                         out0, out1, out2, out3);
-    recv_lane_quad_words(from_aie4, from_aie5, from_aie6, from_aie7,
-                         out4, out5, out6, out7);
+    recv_lane_words(from_aie0, out0);
+    recv_lane_words(from_aie1, out1);
+    recv_lane_words(from_aie2, out2);
+    recv_lane_words(from_aie3, out3);
+    recv_lane_words(from_aie4, out4);
+    recv_lane_words(from_aie5, out5);
+    recv_lane_words(from_aie6, out6);
+    recv_lane_words(from_aie7, out7);
 
     write_output_words(output, lane_base, out0, out1, out2, out3,
                        out4, out5, out6, out7);

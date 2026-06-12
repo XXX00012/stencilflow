@@ -10,11 +10,18 @@ SHELL := /bin/bash
 # Makefile input options
 TARGET ?= hw
 PYTHON ?= python
-DATA_GRID_ROWS ?= 2
-DATA_ITER ?= 6
+DATA_GRID_ROWS ?= 16
+DATA_ITER ?= 20
 DATA_KIND ?= random
 DATA_SEED ?= 0
 DATA_FLAGS ?=
+BOARD_DATA_DIR ?= ./board_data
+BOARD_GRID_ROWS ?= 20
+BOARD_GRID_DEPTH ?= 1
+BOARD_DATA_ITER ?= 20
+BOARD_DATA_KIND ?= random
+BOARD_DATA_SEED ?= 0
+BOARD_DATA_FLAGS ?=
 
 XO_DIR=./$(TARGET).xo_dir
 XSA_DIR=./$(TARGET).xsa_dir
@@ -123,16 +130,25 @@ GCC_LIB := -lxaiengine -ladf_api_xrt -lxrt_core -lxrt_coreutil \
 LDCLFLAGS := $(GCC_LIB)
 
 .ONESHELL:
-.PHONY: clean all data kernels aie sim xsa host package run_emu
+.PHONY: clean all data board_data kernels aie sim xsa host package run_emu clear_board_data
 
 
-all: data aie kernels xsa host package
+all: board_data aie kernels xsa host package
 sd_card: all
 
 data:
 	$(PYTHON) ./data/gen_case.py --data-dir ./data --grid-rows $(DATA_GRID_ROWS) --iter $(DATA_ITER) \
 		--kind $(DATA_KIND) --seed $(DATA_SEED) $(DATA_FLAGS)
 	@echo "COMPLETE: input data refreshed in ./data."
+
+board_data:
+	mkdir -p $(BOARD_DATA_DIR)
+	rm -f $(BOARD_DATA_DIR)/input.txt $(BOARD_DATA_DIR)/input_plio.txt $(BOARD_DATA_DIR)/gold_out.txt
+	$(PYTHON) ./data/gen_case.py --data-dir $(BOARD_DATA_DIR) \
+		--grid-rows $(BOARD_GRID_ROWS) --depth $(BOARD_GRID_DEPTH) --iter $(BOARD_DATA_ITER) \
+		--raw-volume --skip-gold --kind $(BOARD_DATA_KIND) --seed $(BOARD_DATA_SEED) $(BOARD_DATA_FLAGS)
+	rm -f $(BOARD_DATA_DIR)/input_plio.txt
+	@echo "COMPLETE: board input data refreshed in $(BOARD_DATA_DIR)."
 
 ######################################################
 # This step compiles the HLS C kernels and creates the *.xo's 
@@ -149,7 +165,7 @@ $(KERNEL_XO): $(KERNEL_SRC) ./aie/Config.h ./aie/ProcessUnit/include.h
 aie: $(GRAPH_O)
 
 #AIE or X86 Simulation
-sim: $(GRAPH_O)
+sim: data $(GRAPH_O)
      
 ifeq ($(TARGET),sw_emu)
 	$(X86SIM) --pkg-dir=./Work --online -wdb
@@ -192,7 +208,7 @@ host:
 # Depending on the TARGET, it'll either generate the PDI for sw_emu,hw_emu or hw.
 
 package: $(XCLBIN)
-$(XCLBIN): data $(XSA) $(GRAPH_O) $(KERNEL_XO) $(HOST) run.sh xrt.ini Makefile
+$(XCLBIN): board_data $(XSA) $(GRAPH_O) $(KERNEL_XO) $(HOST) run.sh xrt.ini Makefile
 	mkdir -p $(PACKAGE_DIR)
 	v++ -p -t ${TARGET} \
 		-f ${BASE_PLATFORM} \
@@ -205,7 +221,7 @@ $(XCLBIN): data $(XSA) $(GRAPH_O) $(KERNEL_XO) $(HOST) run.sh xrt.ini Makefile
 		--package.sd_file $(HOST) \
 		--package.sd_file run.sh \
 		--package.sd_file xrt.ini \
-		--package.sd_dir ./data \
+		--package.sd_dir $(BOARD_DATA_DIR) \
 		$(XSA) $(GRAPH_O) -o $(XCLBIN)
 	@echo "COMPLETE: package created."
 
@@ -237,7 +253,9 @@ clear_xsa:
 	rm -rf $(XSA_DIR)
 clear_package: 
 	rm -rf $(PACKAGE_DIR)
-clear_all: clear_aie clear_pl clear_ps clear_xsa clear_package
+clear_board_data:
+	rm -rf $(BOARD_DATA_DIR)
+clear_all: clear_aie clear_pl clear_ps clear_xsa clear_package clear_board_data
 	rm -rf hls TopPL logs
 	rm -rf _x v++* .Xil *.db *.log *.wcfg *.wdb pl_sample_counts *.csv .AIE_* ISS_* aiesimulator_* function_*
 	 

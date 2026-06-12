@@ -47,35 +47,32 @@ public:
         dimensions(k_lap.in[0])   = {hdiff_cfg::kLapInputSampleElems};
         dimensions(k_flux1.in[0]) = {hdiff_cfg::kFlux1RawInputSampleElems};
         dimensions(k_flux2.in[1]) = {hdiff_cfg::kFlux2RawInputSampleElems};
-        fifo_depth(net_in_lap)     = 2;
-        fifo_depth(net_in_flux1)   = 2;
-        fifo_depth(net_in_flux2)   = 2;
+        fifo_depth(net_in_lap)     = hdiff_cfg::kInputObjectFifoDepth;
+        fifo_depth(net_in_flux1)   = hdiff_cfg::kDelayedInputObjectFifoDepth;
+        fifo_depth(net_in_flux2)   = hdiff_cfg::kDelayedInputObjectFifoDepth;
 
 
         auto net_lap_f1 = connect(k_lap.out[0], k_flux1.in[1]);
+        auto net_lap_f2 = connect(k_lap.out[0], k_flux2.in[2]);
 
         dimensions(k_lap.out[0])  = {hdiff_cfg::kFluxForwardPackElems};
         dimensions(k_flux1.in[1]) = {hdiff_cfg::kFluxForwardPackElems};
-        fifo_depth(net_lap_f1)     = 6;
-
-        auto net_lap_f2 = connect(k_lap.out[1], k_flux2.in[2]);
-
-        dimensions(k_lap.out[1])  = {hdiff_cfg::kFluxForwardPackElems};
         dimensions(k_flux2.in[2]) = {hdiff_cfg::kFluxForwardPackElems};
-        fifo_depth(net_lap_f2)     = 6;
+        fifo_depth(net_lap_f1)      = hdiff_cfg::kFluxInterObjectFifoDepth;
+        fifo_depth(net_lap_f2)      = hdiff_cfg::kFluxInterObjectFifoDepth;
 
         auto net_f1_f2 = connect(k_flux1.out[0], k_flux2.in[0]);
 
         dimensions(k_flux1.out[0]) = {hdiff_cfg::kMaskCompletePackElems};
         dimensions(k_flux2.in[0])  = {hdiff_cfg::kMaskCompletePackElems};
-        fifo_depth(net_f1_f2)       = 6;
+        fifo_depth(net_f1_f2)       = hdiff_cfg::kFluxInterObjectFifoDepth;
 
 
         auto net_out = connect(k_flux2.out[0], out);
 
-        dimensions(k_flux2.out[0]) = {COL};
-        dimensions(out)             = {COL};
-        fifo_depth(net_out)         = 2;
+        dimensions(k_flux2.out[0]) = {hdiff_cfg::kRowsPerCall * COL};
+        dimensions(out)             = {hdiff_cfg::kRowsPerCall * COL};
+        fifo_depth(net_out)         = hdiff_cfg::kOutputObjectFifoDepth;
   
 #endif
     }

@@ -4,9 +4,9 @@ set -e
 export XILINX_XRT=/usr
 
 XCLBIN=${1:-svd.xclbin}
-ITER=${2:-6}
-INPUT_TXT=${3:-./data/input.txt}
-OUTPUT_TXT=${4:-./aie_out_plio.txt}
+ITER=${2:-20}
+INPUT_TXT=${3:-./board_data/input.txt}
+OUTPUT_TXT=${4:-./aie_out_1lane_256x20_raw.txt}
 
 if [ ! -f "$XCLBIN" ] && [ -f "a.xclbin" ]; then
   XCLBIN="a.xclbin"

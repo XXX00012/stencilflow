@@ -25,6 +25,7 @@ constexpr int kIntsPerPlioWord = 2;
 constexpr int kIntsPerDdrWord = 16;
 constexpr int kPlioWordsPerDdrWord = kIntsPerDdrWord / kIntsPerPlioWord;
 constexpr int kDdrWordsPerRow = kCols / kIntsPerDdrWord;
+constexpr int kWordsPerLane = kIterations * kDdrWordsPerRow;
 constexpr int kVolumeDdrWords = TRI384_VOLUME_DDR_WORDS;
 
 static_assert(kCols == 256, "tri_384 TopPL expects 256 columns");
@@ -111,29 +112,80 @@ void store_lane_output_word(ddr_word_t* output,
     }
 }
 
-template <int LaneOffset>
-void send_lane(const ddr_word_t* input,
-               int lane_base,
-               hls::stream<plio_word_t>& to_aie) {
+void read_input_words(const ddr_word_t* input,
+                      int lane_base,
+                      hls::stream<ddr_word_t>& lane0,
+                      hls::stream<ddr_word_t>& lane1,
+                      hls::stream<ddr_word_t>& lane2,
+                      hls::stream<ddr_word_t>& lane3,
+                      hls::stream<ddr_word_t>& lane4,
+                      hls::stream<ddr_word_t>& lane5,
+                      hls::stream<ddr_word_t>& lane6,
+                      hls::stream<ddr_word_t>& lane7) {
 #pragma HLS INLINE off
     for (int raw_r = 0; raw_r < kIterations; ++raw_r) {
         for (int w = 0; w < kDdrWordsPerRow; ++w) {
-            send_ddr_word(
-                lane_input_word<LaneOffset>(input, lane_base, raw_r, w),
-                to_aie);
+#pragma HLS PIPELINE II=1
+            lane0.write(lane_input_word<0>(input, lane_base, raw_r, w));
+            lane1.write(lane_input_word<1>(input, lane_base, raw_r, w));
+            lane2.write(lane_input_word<2>(input, lane_base, raw_r, w));
+            lane3.write(lane_input_word<3>(input, lane_base, raw_r, w));
+            lane4.write(lane_input_word<4>(input, lane_base, raw_r, w));
+            lane5.write(lane_input_word<5>(input, lane_base, raw_r, w));
+            lane6.write(lane_input_word<6>(input, lane_base, raw_r, w));
+            lane7.write(lane_input_word<7>(input, lane_base, raw_r, w));
         }
     }
 }
 
-template <int LaneOffset>
-void recv_lane(ddr_word_t* output,
-               int lane_base,
-               hls::stream<plio_word_t>& from_aie) {
+void send_lane_words(hls::stream<ddr_word_t>& lane_words,
+                     hls::stream<plio_word_t>& to_aie) {
+#pragma HLS INLINE off
+    for (int i = 0; i < kWordsPerLane; ++i) {
+#pragma HLS PIPELINE II=1
+        send_ddr_word(lane_words.read(), to_aie);
+    }
+}
+
+void recv_lane_words(hls::stream<plio_word_t>& from_aie,
+                     hls::stream<ddr_word_t>& lane_words) {
+#pragma HLS INLINE off
+    for (int i = 0; i < kWordsPerLane; ++i) {
+#pragma HLS PIPELINE II=1
+        lane_words.write(recv_ddr_word(from_aie));
+    }
+}
+
+void write_output_words(ddr_word_t* output,
+                        int lane_base,
+                        hls::stream<ddr_word_t>& lane0,
+                        hls::stream<ddr_word_t>& lane1,
+                        hls::stream<ddr_word_t>& lane2,
+                        hls::stream<ddr_word_t>& lane3,
+                        hls::stream<ddr_word_t>& lane4,
+                        hls::stream<ddr_word_t>& lane5,
+                        hls::stream<ddr_word_t>& lane6,
+                        hls::stream<ddr_word_t>& lane7) {
 #pragma HLS INLINE off
     for (int raw_r = 0; raw_r < kIterations; ++raw_r) {
         for (int w = 0; w < kDdrWordsPerRow; ++w) {
-            store_lane_output_word<LaneOffset>(
-                output, lane_base, raw_r, w, recv_ddr_word(from_aie));
+#pragma HLS PIPELINE II=1
+            store_lane_output_word<0>(
+                output, lane_base, raw_r, w, lane0.read());
+            store_lane_output_word<1>(
+                output, lane_base, raw_r, w, lane1.read());
+            store_lane_output_word<2>(
+                output, lane_base, raw_r, w, lane2.read());
+            store_lane_output_word<3>(
+                output, lane_base, raw_r, w, lane3.read());
+            store_lane_output_word<4>(
+                output, lane_base, raw_r, w, lane4.read());
+            store_lane_output_word<5>(
+                output, lane_base, raw_r, w, lane5.read());
+            store_lane_output_word<6>(
+                output, lane_base, raw_r, w, lane6.read());
+            store_lane_output_word<7>(
+                output, lane_base, raw_r, w, lane7.read());
         }
     }
 }
@@ -184,24 +236,67 @@ void TopPL(const ddr_word_t* input,
 #pragma HLS INTERFACE axis port=from_aie6
 #pragma HLS INTERFACE axis port=from_aie7
 
-#pragma HLS DATAFLOW
-    send_lane<0>(input, lane_base, to_aie0);
-    send_lane<1>(input, lane_base, to_aie1);
-    send_lane<2>(input, lane_base, to_aie2);
-    send_lane<3>(input, lane_base, to_aie3);
-    send_lane<4>(input, lane_base, to_aie4);
-    send_lane<5>(input, lane_base, to_aie5);
-    send_lane<6>(input, lane_base, to_aie6);
-    send_lane<7>(input, lane_base, to_aie7);
+    hls::stream<ddr_word_t> input_lane0;
+    hls::stream<ddr_word_t> input_lane1;
+    hls::stream<ddr_word_t> input_lane2;
+    hls::stream<ddr_word_t> input_lane3;
+    hls::stream<ddr_word_t> input_lane4;
+    hls::stream<ddr_word_t> input_lane5;
+    hls::stream<ddr_word_t> input_lane6;
+    hls::stream<ddr_word_t> input_lane7;
+    hls::stream<ddr_word_t> output_lane0;
+    hls::stream<ddr_word_t> output_lane1;
+    hls::stream<ddr_word_t> output_lane2;
+    hls::stream<ddr_word_t> output_lane3;
+    hls::stream<ddr_word_t> output_lane4;
+    hls::stream<ddr_word_t> output_lane5;
+    hls::stream<ddr_word_t> output_lane6;
+    hls::stream<ddr_word_t> output_lane7;
 
-    recv_lane<0>(output, lane_base, from_aie0);
-    recv_lane<1>(output, lane_base, from_aie1);
-    recv_lane<2>(output, lane_base, from_aie2);
-    recv_lane<3>(output, lane_base, from_aie3);
-    recv_lane<4>(output, lane_base, from_aie4);
-    recv_lane<5>(output, lane_base, from_aie5);
-    recv_lane<6>(output, lane_base, from_aie6);
-    recv_lane<7>(output, lane_base, from_aie7);
+#pragma HLS STREAM variable=input_lane0 depth=32
+#pragma HLS STREAM variable=input_lane1 depth=32
+#pragma HLS STREAM variable=input_lane2 depth=32
+#pragma HLS STREAM variable=input_lane3 depth=32
+#pragma HLS STREAM variable=input_lane4 depth=32
+#pragma HLS STREAM variable=input_lane5 depth=32
+#pragma HLS STREAM variable=input_lane6 depth=32
+#pragma HLS STREAM variable=input_lane7 depth=32
+#pragma HLS STREAM variable=output_lane0 depth=16
+#pragma HLS STREAM variable=output_lane1 depth=16
+#pragma HLS STREAM variable=output_lane2 depth=16
+#pragma HLS STREAM variable=output_lane3 depth=16
+#pragma HLS STREAM variable=output_lane4 depth=16
+#pragma HLS STREAM variable=output_lane5 depth=16
+#pragma HLS STREAM variable=output_lane6 depth=16
+#pragma HLS STREAM variable=output_lane7 depth=16
+
+#pragma HLS dataflow
+    read_input_words(input, lane_base,
+                     input_lane0, input_lane1, input_lane2, input_lane3,
+                     input_lane4, input_lane5, input_lane6, input_lane7);
+
+    send_lane_words(input_lane0, to_aie0);
+    send_lane_words(input_lane1, to_aie1);
+    send_lane_words(input_lane2, to_aie2);
+    send_lane_words(input_lane3, to_aie3);
+    send_lane_words(input_lane4, to_aie4);
+    send_lane_words(input_lane5, to_aie5);
+    send_lane_words(input_lane6, to_aie6);
+    send_lane_words(input_lane7, to_aie7);
+
+    recv_lane_words(from_aie0, output_lane0);
+    recv_lane_words(from_aie1, output_lane1);
+    recv_lane_words(from_aie2, output_lane2);
+    recv_lane_words(from_aie3, output_lane3);
+    recv_lane_words(from_aie4, output_lane4);
+    recv_lane_words(from_aie5, output_lane5);
+    recv_lane_words(from_aie6, output_lane6);
+    recv_lane_words(from_aie7, output_lane7);
+
+    write_output_words(output, lane_base,
+                       output_lane0, output_lane1, output_lane2,
+                       output_lane3, output_lane4, output_lane5,
+                       output_lane6, output_lane7);
 }
 
 } // extern "C"

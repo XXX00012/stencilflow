@@ -69,6 +69,9 @@ endif
 VPP_XO_FLAGS := -c -t $(TARGET) --platform $(BASE_PLATFORM) -k $(KERNEL) --save-temps -g
 
 VPP_LINK_FLAGS := -l -t $(TARGET) --platform $(BASE_PLATFORM) $(GRAPH_O) $(KERNEL_XO) --save-temps -g --config $(CONFIG_FILE) -o $(XSA)
+# Relax PL timing by lowering only the TopPL CU clocks; keep platform clocks unchanged.
+PL_FREQ_HZ = 250000000
+VPP_LINK_FLAGS += --clock.freqHz $(PL_FREQ_HZ):TopPL_1.ap_clk,TopPL_2.ap_clk,TopPL_3.ap_clk,TopPL_4.ap_clk,TopPL_5.ap_clk,TopPL_6.ap_clk,TopPL_7.ap_clk,TopPL_8.ap_clk,TopPL_9.ap_clk,TopPL_10.ap_clk,TopPL_11.ap_clk,TopPL_12.ap_clk,TopPL_13.ap_clk,TopPL_14.ap_clk,TopPL_15.ap_clk,TopPL_16.ap_clk
 VPP_LINK_FLAGS += --vivado.impl.jobs 256
 
 CXX := $(XILINX_VITIS)/gnu/aarch64/lin/aarch64-linux/bin/aarch64-linux-gnu-g++
@@ -134,7 +137,8 @@ else
 endif
 
 $(GRAPH_O): $(GRAPH_DEPS)
-	$(AIECC) $(AIE_FLAGS) $(GRAPH)
+	$(AIECC) $(AIE_FLAGS) -o $(GRAPH_O) $(GRAPH)
+	test -f $(GRAPH_O)
 
 xsa: $(XSA)
 $(XSA): $(GRAPH_O) $(KERNEL_XO) $(CONFIG_FILE) Makefile
@@ -178,8 +182,13 @@ endif
 
 clear_aie:
 	rm -rf Work *.a
+# clear_pl 现在连同 XSA 链接与综合的全部中间产物一起清理，
+# 但绝不触碰 AIE 结果（Work/ 与 libadf.a），便于只重跑 PL+link。
 clear_pl:
 	rm -rf $(XO_DIR) pl/*.xo
+	rm -rf $(XSA_DIR)
+	rm -rf _x .Xil .ipcache hls TopPL logs pl_sample_counts
+	rm -f v++_*.log xcd.log AIECompiler.log sol.db Map_Report.csv *.wcfg *.wdb
 clear_ps:
 	rm -rf *.o *.exe
 clear_xsa:
@@ -190,4 +199,4 @@ clear_board_data:
 	rm -rf $(BOARD_DATA_DIR) ./data/input_plio*.txt ./data/lane_map.txt ./data/input.txt ./data/gold_out.txt
 clear_all: clear_aie clear_pl clear_ps clear_xsa clear_package clear_board_data
 	rm -rf hls TopPL logs
-	rm -rf _x v++* .Xil *.db *.log *.wcfg *.wdb pl_sample_counts *.csv .AIE_* ISS_* aiesimulator_* function_*
+	rm -rf _x v++* .Xil .ipcache *.db *.log *.wcfg *.wdb pl_sample_counts *.csv .AIE_* ISS_* aiesimulator_* function_*

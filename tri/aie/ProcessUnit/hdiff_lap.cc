@@ -22,11 +22,17 @@ void hdiff_lap(lap_input_buffer& in_window,
   v8int32 coeffs_rest = *(v8int32*)weights_rest;
 
   int32_t* __restrict base_ptr = in_window.data();
-  int32_t* row0_base = base_ptr + (0 * COL);
-  int32_t* row1_base = base_ptr + (1 * COL);
-  int32_t* row2_base = base_ptr + (2 * COL);
-  int32_t* row3_base = base_ptr + (3 * COL);
-  int32_t* row4_base = base_ptr + (4 * COL);
+
+  for (int b = 0; b < hdiff_cfg::kBatchRows; ++b) {
+  int32_t* row0_base = base_ptr + ((b + 0) * COL);
+  int32_t* row1_base = base_ptr + ((b + 1) * COL);
+  int32_t* row2_base = base_ptr + ((b + 2) * COL);
+  int32_t* row3_base = base_ptr + ((b + 3) * COL);
+  int32_t* row4_base = base_ptr + ((b + 4) * COL);
+  int32_t* out_flux1_base = out_flux1.data() + (b * COL);
+  int32_t* out_flux2_base = out_flux2.data() + (b * COL);
+  int32_t* out_flux3_base = out_flux3.data() + (b * COL);
+  int32_t* out_flux4_base = out_flux4.data() + (b * COL);
 
   v8int32* ptr_out = nullptr;
   v8int32* __restrict row0_ptr = (v8int32*)row0_base;
@@ -79,7 +85,7 @@ void hdiff_lap(lap_input_buffer& in_window,
       flux_sub =
           sub16(concat(lap_ij, undef_v8int32()), 0, 0x76543210, 0xFEDCBA98,
                 concat(lap_0,  undef_v8int32()), 0, 0x76543210, 0xFEDCBA98);
-      ptr_out = (v8int32*)out_flux1.data() + i;
+      ptr_out = (v8int32*)out_flux1_base + i;
       *ptr_out = ext_w(flux_sub, 0);
 
       acc_0 = lmul8(data_buf1, 3, 0x76543210, coeffs_rest, 0, 0x00000000);
@@ -98,7 +104,7 @@ void hdiff_lap(lap_input_buffer& in_window,
       flux_sub =
           sub16(concat(lap_0,  undef_v8int32()), 0, 0x76543210, 0xFEDCBA98,
                 concat(lap_ij, undef_v8int32()), 0, 0x76543210, 0xFEDCBA98);
-      ptr_out = (v8int32*)out_flux2.data() + i;
+      ptr_out = (v8int32*)out_flux2_base + i;
       *ptr_out = ext_w(flux_sub, 0);
 
       acc_1 = lmul8(data_buf2, 2, 0x76543210, coeffs_rest, 0, 0x00000000);
@@ -124,7 +130,7 @@ void hdiff_lap(lap_input_buffer& in_window,
       flux_sub =
           sub16(concat(lap_ij, undef_v8int32()), 0, 0x76543210, 0xFEDCBA98,
                 concat(lap_0,  undef_v8int32()), 0, 0x76543210, 0xFEDCBA98);
-      ptr_out = (v8int32*)out_flux3.data() + i;
+      ptr_out = (v8int32*)out_flux3_base + i;
       *ptr_out = ext_w(flux_sub, 0);
 
       row3_ptr = ((v8int32*)row3_base) + i;
@@ -143,11 +149,12 @@ void hdiff_lap(lap_input_buffer& in_window,
       flux_sub =
           sub16(concat(srs(acc_0, 0), undef_v8int32()), 0, 0x76543210, 0xFEDCBA98,
                 concat(lap_ij,        undef_v8int32()), 0, 0x76543210, 0xFEDCBA98);
-      ptr_out = (v8int32*)out_flux4.data() + i;
+      ptr_out = (v8int32*)out_flux4_base + i;
       *ptr_out = ext_w(flux_sub, 0);
 
       row3_ptr = ((v8int32*)row3_base) + i + 1;
       data_buf1 = upd_w(data_buf1, 0, *(row3_ptr)++);
       data_buf1 = upd_w(data_buf1, 1, *(row3_ptr));
     }
+  }
 }

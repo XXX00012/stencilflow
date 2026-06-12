@@ -108,6 +108,14 @@ void hdiff_flux2(input_buffer<std::int32_t>& flux_inter1,
                  input_buffer<std::int32_t>& flux_inter4,
                  input_buffer<std::int32_t>& flux_inter5,
                  output_buffer<std::int32_t>& out) {
-  hdiff_flux2_core(flux_inter1.data(), flux_inter2.data(), flux_inter3.data(),
-                   flux_inter4.data(), flux_inter5.data(), out.data());
+  for (int b = 0; b < hdiff_cfg::kBatchRows; ++b) {
+    const int inter_offset = b * 2 * COL;
+    const int out_offset = b * COL;
+    hdiff_flux2_core(flux_inter1.data() + inter_offset,
+                     flux_inter2.data() + inter_offset,
+                     flux_inter3.data() + inter_offset,
+                     flux_inter4.data() + inter_offset,
+                     flux_inter5.data() + inter_offset,
+                     out.data() + out_offset);
+  }
 }

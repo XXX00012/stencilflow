@@ -1,107 +1,79 @@
+#pragma once
+
 #include <adf.h>
-#include <aie_api/aie.hpp>
-#include <cstdint>
-#include "include.h"
-#include "hdiff.h"
+#include "../ProcessUnit/include.h"
+#include "../Config.h"
+#include "../ProcessUnit/hdiff.h"
 
 using namespace adf;
 
-#define kernel_load 14
+class StencilCoreGraph : public graph {
+public:
+    static constexpr int kInputCount = 3;
 
-namespace {
+    port<input>  in[kInputCount];
+    port<output> out;
 
-inline v8int32 load_row_chunk(int32_t* row_base, unsigned chunk) {
-  return ((v8int32*)row_base)[chunk];
-}
+    kernel k_lap;
+    kernel k_flux1;
+    kernel k_flux2;
 
-inline unsigned int make_take_mask(v8int32 product) {
-  return gt16(concat(product, undef_v8int32()), 0,
-              0x76543210, 0xFEDCBA98,
-              null_v16int32(), 0,
-              0x76543210, 0xFEDCBA98);
-}
+    StencilCoreGraph() {
+#if defined(__AIESIM__) || defined(__X86SIM__) || defined(__ADF_FRONTEND__)
+        k_lap   = kernel::create(hdiff_lap);
+        k_flux1 = kernel::create(hdiff_flux1);
+        k_flux2 = kernel::create(hdiff_flux2);
 
-} // namespace
+        source(k_lap)   = "ProcessUnit/hdiff_lap.cc";
+        source(k_flux1) = "ProcessUnit/hdiff_flux1.cc";
+        source(k_flux2) = "ProcessUnit/hdiff_flux2.cc";
 
-void hdiff_flux1(flux1_input_buffer& in_window,
-                 input_buffer<int32_t>& sub_pack,
-                 output_buffer<int32_t>& mask_pack) {
-  int32_t* __restrict base_ptr = in_window.data();
+        headers(k_lap)   = {"ProcessUnit/hdiff.h", "ProcessUnit/include.h", "Config.h"};
+        headers(k_flux1) = {"ProcessUnit/hdiff.h", "ProcessUnit/include.h", "Config.h"};
+        headers(k_flux2) = {"ProcessUnit/hdiff.h", "ProcessUnit/include.h", "Config.h"};
 
-  // data() points at the margin/history region followed by the current row.
-  int32_t* row1_base = base_ptr + (0 * COL);
-  int32_t* row2_base = base_ptr + (1 * COL);
-  int32_t* row3_base = base_ptr + (2 * COL);
+        runtime<ratio>(k_lap)   = 0.9;
+        runtime<ratio>(k_flux1) = 0.9;
+        runtime<ratio>(k_flux2) = 0.9;
 
-  int32_t* __restrict sub_base = sub_pack.data();
-  int32_t* __restrict sub_left_base  = sub_base + (0 * COL);
-  int32_t* __restrict sub_right_base = sub_base + (1 * COL);
-  int32_t* __restrict sub_up_base    = sub_base + (2 * COL);
-  int32_t* __restrict sub_down_base  = sub_base + (3 * COL);
+        location<kernel>(k_lap)   = tile(hdiff_cfg::kTileCol, hdiff_cfg::kLapTileRow);
+        location<kernel>(k_flux1) = tile(hdiff_cfg::kTileCol, hdiff_cfg::kFlux1TileRow);
+        location<kernel>(k_flux2) = tile(hdiff_cfg::kTileCol, hdiff_cfg::kFlux2TileRow);
 
-  int32_t* __restrict mask_base = mask_pack.data();
-  int32_t* __restrict mask_left  = mask_base + (0 * hdiff_cfg::kFluxMaskWordsPerRow);
-  int32_t* __restrict mask_right = mask_base + (1 * hdiff_cfg::kFluxMaskWordsPerRow);
-  int32_t* __restrict mask_up    = mask_base + (2 * hdiff_cfg::kFluxMaskWordsPerRow);
-  int32_t* __restrict mask_down  = mask_base + (3 * hdiff_cfg::kFluxMaskWordsPerRow);
+        auto net_in_lap   = connect(in[0], k_lap.in[0]);
+        auto net_in_flux1 = connect(in[1], k_flux1.in[0]);
+        auto net_in_flux2 = connect(in[2], k_flux2.in[1]);
 
-  v16int32 data_buf1 = null_v16int32();
-  v16int32 data_buf2 = null_v16int32();
+        dimensions(k_lap.in[0])   = {hdiff_cfg::kLapInputSampleElems};
+        dimensions(k_flux1.in[0]) = {hdiff_cfg::kFlux1RawInputSampleElems};
+        dimensions(k_flux2.in[1]) = {hdiff_cfg::kFlux2RawInputSampleElems};
+        fifo_depth(net_in_lap)     = hdiff_cfg::kInputObjectFifoDepth;
+        fifo_depth(net_in_flux1)   = hdiff_cfg::kDelayedInputObjectFifoDepth;
+        fifo_depth(net_in_flux2)   = hdiff_cfg::kDelayedInputObjectFifoDepth;
 
-  v8acc80 acc_0 = null_v8acc80();
-  v8acc80 acc_1 = null_v8acc80();
 
-  data_buf1 = upd_w(data_buf1, 0, load_row_chunk(row1_base, 0));
-  data_buf1 = upd_w(data_buf1, 1, load_row_chunk(row1_base, 1));
+        auto net_lap_f1 = connect(k_lap.out[0], k_flux1.in[1]);
+        auto net_lap_f2 = connect(k_lap.out[0], k_flux2.in[2]);
 
-  data_buf2 = upd_w(data_buf2, 0, load_row_chunk(row2_base, 0));
-  data_buf2 = upd_w(data_buf2, 1, load_row_chunk(row2_base, 1));
+        dimensions(k_lap.out[0])  = {hdiff_cfg::kFluxForwardPackElems};
+        dimensions(k_flux1.in[1]) = {hdiff_cfg::kFluxForwardPackElems};
+        dimensions(k_flux2.in[2]) = {hdiff_cfg::kFluxForwardPackElems};
+        fifo_depth(net_lap_f1)      = hdiff_cfg::kFluxInterObjectFifoDepth;
+        fifo_depth(net_lap_f2)      = hdiff_cfg::kFluxInterObjectFifoDepth;
 
-  for (unsigned i = 0; i < COL / 8; i++)
-    chess_prepare_for_pipelining
-    chess_loop_range(1, ) {
-      v8int32 flux_sub;
-      v8int32 product;
+        auto net_f1_f2 = connect(k_flux1.out[0], k_flux2.in[0]);
 
-      flux_sub = ((v8int32*)sub_left_base)[i];
+        dimensions(k_flux1.out[0]) = {hdiff_cfg::kMaskCompletePackElems};
+        dimensions(k_flux2.in[0])  = {hdiff_cfg::kMaskCompletePackElems};
+        fifo_depth(net_f1_f2)       = hdiff_cfg::kFluxInterObjectFifoDepth;
 
-      acc_1 = lmul8(data_buf2, 2, 0x76543210, flux_sub, 0, 0x76543210);
-      acc_1 = lmsc8(acc_1, data_buf2, 1, 0x76543210, flux_sub, 0, 0x76543210);
-      product = srs(acc_1, 0);
 
-      mask_left[i] = (int32_t)make_take_mask(product);
+        auto net_out = connect(k_flux2.out[0], out);
 
-      flux_sub = ((v8int32*)sub_right_base)[i];
-
-      acc_0 = lmul8(data_buf2, 3, 0x76543210, flux_sub, 0, 0x76543210);
-      acc_0 = lmsc8(acc_0, data_buf2, 2, 0x76543210, flux_sub, 0, 0x76543210);
-      product = srs(acc_0, 0);
-
-      mask_right[i] = (int32_t)make_take_mask(product);
-
-      flux_sub = ((v8int32*)sub_up_base)[i];
-
-      acc_1 = lmul8(data_buf2, 2, 0x76543210, flux_sub, 0, 0x76543210);
-      acc_1 = lmsc8(acc_1, data_buf1, 2, 0x76543210, flux_sub, 0, 0x76543210);
-      product = srs(acc_1, 0);
-
-      mask_up[i] = (int32_t)make_take_mask(product);
-
-      data_buf1 = upd_w(data_buf1, 0, load_row_chunk(row3_base, i));
-      data_buf1 = upd_w(data_buf1, 1, load_row_chunk(row3_base, i + 1));
-
-      flux_sub = ((v8int32*)sub_down_base)[i];
-
-      acc_1 = lmul8(data_buf1, 2, 0x76543210, flux_sub, 0, 0x76543210);
-      acc_1 = lmsc8(acc_1, data_buf2, 2, 0x76543210, flux_sub, 0, 0x76543210);
-      product = srs(acc_1, 0);
-
-      mask_down[i] = (int32_t)make_take_mask(product);
-
-      data_buf1 = upd_w(data_buf1, 0, load_row_chunk(row1_base, i + 1));
-      data_buf1 = upd_w(data_buf1, 1, load_row_chunk(row1_base, i + 2));
-
-      data_buf2 = upd_w(data_buf2, 0, load_row_chunk(row2_base, i + 1));
-      data_buf2 = upd_w(data_buf2, 1, load_row_chunk(row2_base, i + 2));
+        dimensions(k_flux2.out[0]) = {hdiff_cfg::kRowsPerCall * COL};
+        dimensions(out)             = {hdiff_cfg::kRowsPerCall * COL};
+        fifo_depth(net_out)         = hdiff_cfg::kOutputObjectFifoDepth;
+  
+#endif
     }
-}
+};

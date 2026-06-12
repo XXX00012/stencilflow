@@ -6,8 +6,9 @@ import numpy as np
 
 
 COL = 256
-GRID_ROWS = 256
-DEFAULT_DEPTH = 64
+BATCH_ROWS = 2
+GRID_ROWS = 20
+DEFAULT_DEPTH = 1
 
 
 # ----------------------------
@@ -44,6 +45,19 @@ def write_stream_txt(path: Path, vec: np.ndarray) -> None:
     with path.open("w", encoding="utf-8") as f:
         for v in vec:
             f.write(f"{int(v)}\n")
+
+
+def write_plio128_i32(path: Path, vec: np.ndarray) -> None:
+    vec = np.asarray(vec, dtype=np.int32).reshape(-1)
+    if vec.size % 4 != 0:
+        raise ValueError(f"{path} requires a multiple-of-4 int32 count for plio_128_bits")
+
+    with path.open("w", encoding="utf-8") as f:
+        for i in range(0, vec.size, 4):
+            f.write(
+                f"{int(vec[i])} {int(vec[i + 1])} "
+                f"{int(vec[i + 2])} {int(vec[i + 3])}\n"
+            )
 
 
 # ----------------------------
@@ -468,7 +482,7 @@ def gold_from_depth_slices(slices3d: np.ndarray, oob_mode: str = "zero") -> np.n
 
 def dump_single_plio_input_depthwise(slices3d: np.ndarray, out_dir: Path) -> None:
     stream = np.asarray(slices3d, dtype=np.int32).reshape(-1)
-    write_stream_txt(out_dir / "input_plio.txt", stream)
+    write_plio128_i32(out_dir / "input_plio.txt", stream)
 
 
 def dump_human_readable_inputs_depthwise(slices3d: np.ndarray, out_dir: Path, graph_id: str = "hdiff") -> None:
@@ -531,12 +545,18 @@ def main() -> None:
     if args.cols != COL:
         raise ValueError(f"this flow expects cols={COL}")
 
-    expected_iter = args.grid_rows * args.depth
+    logical_output_rows = args.grid_rows * args.depth
+    if logical_output_rows % BATCH_ROWS != 0:
+        raise ValueError(
+            f"grid_rows * depth must be divisible by BATCH_ROWS={BATCH_ROWS}"
+        )
+
+    expected_iter = logical_output_rows // BATCH_ROWS
     if args.iter_cnt is None:
         args.iter_cnt = expected_iter
     elif args.iter_cnt != expected_iter:
         raise ValueError(
-            f"--iter must equal grid_rows * depth = {expected_iter}, got {args.iter_cnt}"
+            f"--iter must equal grid_rows * depth / {BATCH_ROWS} = {expected_iter}, got {args.iter_cnt}"
         )
 
     data_dir = args.data_dir
@@ -566,12 +586,12 @@ def main() -> None:
     dump_single_plio_input_depthwise(slices3d, data_dir)
 
     print(f"logical workload : {args.grid_rows} x {COL} x {args.depth}")
-    print(f"host iter_cnt    : {args.iter_cnt}")
+    print(f"host firing_cnt  : {args.iter_cnt}")
     print(f"source rows/plane: {args.grid_rows + 4}")
     if not args.skip_gold:
         print(f"gold output      : {gold.shape[0]} x {gold.shape[1]}")
     print(f"input_plio rows  : {(args.grid_rows + 4) * args.depth}")
-    print(f"input_plio length: {slices3d.size} scalars")
+    print(f"input_plio length: {slices3d.size // 4} plio128 lines")
 
 
 if __name__ == "__main__":

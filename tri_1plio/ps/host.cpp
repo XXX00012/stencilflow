@@ -22,9 +22,10 @@ TopStencilGraph topStencil("stencil");
 
 namespace {
 
-constexpr int DEFAULT_ITER = 6;
-constexpr int PREVIEW = 16;
 constexpr int WARMUP_ROWS = hdiff_cfg::kLapWarmupIterations;
+constexpr int BOARD_GRID_ROWS = 20;
+constexpr int BOARD_GRID_DEPTH = 1;
+constexpr int DEFAULT_ITER = BOARD_GRID_ROWS * BOARD_GRID_DEPTH;
 constexpr int OUT_WORDS_PER_ITER = COL;
 
 using Clock = std::chrono::high_resolution_clock;
@@ -85,14 +86,6 @@ void dump_output_matrix(const std::string& path,
     }
 }
 
-void print_preview(const char* tag, const std::int32_t* p, int n) {
-    std::printf("%s", tag);
-    for (int i = 0; i < n; ++i) {
-        std::printf(" %d", p[i]);
-    }
-    std::printf("\n");
-}
-
 xrt::kernel open_toppl_kernel(const xrt::device& device,
                               const xrt::uuid& uuid) {
     try {
@@ -133,9 +126,16 @@ int main(int argc, char* argv[]) {
                      WARMUP_ROWS);
         return EXIT_FAILURE;
     }
+    if (iter_cnt % hdiff_cfg::kRowsPerCall != 0) {
+        std::fprintf(stderr,
+                     "[error] iter_cnt %d must be divisible by kRowsPerCall %d\n",
+                     iter_cnt,
+                     hdiff_cfg::kRowsPerCall);
+        return EXIT_FAILURE;
+    }
 
     const int input_elems = iter_cnt * COL;
-    const int output_rows = iter_cnt - WARMUP_ROWS;
+    const int output_rows = iter_cnt;
     const int output_elems = output_rows * OUT_WORDS_PER_ITER;
     const std::size_t input_bytes =
         static_cast<std::size_t>(input_elems) * sizeof(std::int32_t);
@@ -146,16 +146,6 @@ int main(int argc, char* argv[]) {
     if (!load_input_file(input_path, input)) {
         return EXIT_FAILURE;
     }
-
-    print_preview("input preview        :", input.data(),
-                  std::min(PREVIEW, input_elems));
-    std::printf("mapping              : DDR -> TopPL -> 1 AIE PLIO lane -> TopPL -> DDR\n");
-    std::printf("input rows           : %d x %d int32\n", iter_cnt, COL);
-    std::printf("graph.run            : %d; keep raw output rows %d..%d\n",
-                iter_cnt,
-                WARMUP_ROWS,
-                iter_cnt - 1);
-    std::fflush(stdout);
 
     bool graph_initialized = false;
 
@@ -182,57 +172,34 @@ int main(int argc, char* argv[]) {
         std::memcpy(input_map, input.data(), input_bytes);
         std::memset(output_map, 0, output_bytes);
 
-        const auto t0 = Clock::now();
         input_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE);
         output_bo.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
-        std::printf("[stage] topStencil.init begin\n");
-        std::fflush(stdout);
         topStencil.init();
         graph_initialized = true;
-        std::printf("[stage] topStencil.init done\n");
-        std::fflush(stdout);
 
-        const auto hw_t0 = Clock::now();
-
-        std::printf("[stage] TopPL submit begin\n");
-        std::fflush(stdout);
+        const auto pl_t0 = Clock::now();
         auto toppl_run = toppl(input_bo, output_bo, iter_cnt);
-        std::printf("[stage] TopPL submit done\n");
-        std::fflush(stdout);
 
-        std::printf("[stage] topStencil.run begin\n");
-        std::fflush(stdout);
-        topStencil.run(iter_cnt);
-        std::printf("[stage] topStencil.run done\n");
-        std::fflush(stdout);
-
-        std::printf("[stage] TopPL wait begin\n");
-        std::fflush(stdout);
+        const auto aie_t0 = Clock::now();
+        topStencil.run(iter_cnt / hdiff_cfg::kRowsPerCall);
         toppl_run.wait();
-        std::printf("[stage] TopPL wait done\n");
-        std::fflush(stdout);
-
-        std::printf("[stage] graph wait begin\n");
-        std::fflush(stdout);
+        const auto pl_t1 = Clock::now();
         topStencil.wait();
-        std::printf("[stage] graph wait done\n");
-        std::fflush(stdout);
+        const auto aie_t1 = Clock::now();
 
         topStencil.end();
         graph_initialized = false;
 
-        const auto hw_t1 = Clock::now();
-        output_bo.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
-        const auto t1 = Clock::now();
+        const long long pl_transfer_us = elapsed_us(pl_t0, pl_t1);
+        const long long aie_run_us = elapsed_us(aie_t0, aie_t1);
 
-        print_preview("output preview       :", output_map,
-                      std::min(PREVIEW, output_elems));
+        output_bo.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+
         dump_output_matrix(output_path, output_map, output_rows);
 
-        std::printf("hardware_run_us      : %lld\n", elapsed_us(hw_t0, hw_t1));
-        std::printf("end_to_end_us        : %lld\n", elapsed_us(t0, t1));
-        std::printf("output dumped        : %s\n", output_path.c_str());
+        std::printf("pl_transfer_us : %lld\n", pl_transfer_us);
+        std::printf("aie_run_us     : %lld\n", aie_run_us);
     } catch (const std::exception& ex) {
         if (graph_initialized) {
             try {

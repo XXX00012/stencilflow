@@ -6,9 +6,9 @@ import numpy as np
 
 
 COL = 256
-# run(6) consumes 6 source rows and produces 6 rows.
-# The first 4 rows are invalid margin-priming rows; the last 2 are compared.
-GRID_ROWS = 2
+# The default AIE sim uses B=2 and run(10), so it consumes 20 source rows.
+# The first 4 rows are invalid margin-priming rows; the remaining 16 are compared.
+GRID_ROWS = 16
 DEFAULT_DEPTH = 1
 DEFAULT_C_COEFF = 7
 
@@ -19,6 +19,12 @@ GENERATED_PATTERNS = (
     "hdiff_in*.txt",
     "TestOutputS.txt",
 )
+OVERWRITTEN_OUTPUTS = {
+    "gold_out.txt",
+    "input.txt",
+    "input_plio.txt",
+    "TestOutputS.txt",
+}
 
 
 # ----------------------------
@@ -57,20 +63,25 @@ def write_stream_txt(path: Path, vec: np.ndarray) -> None:
             f.write(f"{int(v)}\n")
 
 
-def write_plio64_i32(path: Path, vec: np.ndarray) -> None:
+def write_plio128_i32(path: Path, vec: np.ndarray) -> None:
     vec = np.asarray(vec, dtype=np.int32).reshape(-1)
-    if vec.size % 2 != 0:
-        raise ValueError(f"{path} requires an even int32 count for plio_64_bits")
+    if vec.size % 4 != 0:
+        raise ValueError(f"{path} requires a multiple-of-4 int32 count for plio_128_bits")
 
     with path.open("w", encoding="utf-8") as f:
-        for i in range(0, vec.size, 2):
-            f.write(f"{int(vec[i])} {int(vec[i + 1])}\n")
+        for i in range(0, vec.size, 4):
+            f.write(
+                f"{int(vec[i])} {int(vec[i + 1])} "
+                f"{int(vec[i + 2])} {int(vec[i + 3])}\n"
+            )
 
 
 def cleanup_generated_files(data_dir: Path) -> None:
     for pattern in GENERATED_PATTERNS:
         for path in data_dir.glob(pattern):
             if path.is_file():
+                if path.name in OVERWRITTEN_OUTPUTS:
+                    continue
                 path.unlink()
 
 
@@ -576,13 +587,15 @@ def make_depth_slices(kind: str,
                       seed: int,
                       low: int,
                       high: int,
-                      const_value: int) -> np.ndarray:
+                      const_value: int,
+                      raw_volume: bool = False) -> np.ndarray:
     slices = []
+    source_rows = grid_rows if raw_volume else grid_rows + 4
     for d in range(depth):
         slice_seed = seed + d if kind == "random" else seed
         sl = make_input_rows(
             kind=kind,
-            rows=grid_rows + 4,
+            rows=source_rows,
             cols=cols,
             seed=slice_seed,
             low=low,
@@ -667,6 +680,8 @@ def main() -> None:
                     help="number of independent depth planes")
     ap.add_argument("--iter", type=int, default=None, dest="iter_cnt",
                     help="optional host iter count; default = (grid_rows + 4) * depth")
+    ap.add_argument("--raw-volume", action="store_true",
+                    help="generate exactly grid_rows * depth rows, with no per-depth warmup/halo rows")
     ap.add_argument("--cols", type=int, default=COL)
     ap.add_argument("--kind", choices=["zeros", "const", "ramp", "checker", "impulse", "random"], default="random")
     ap.add_argument("--seed", type=int, default=0)
@@ -696,13 +711,14 @@ def main() -> None:
     if args.cols != COL:
         raise ValueError(f"this flow expects cols={COL}")
 
-    source_rows_per_depth = args.grid_rows + 4
+    source_rows_per_depth = args.grid_rows if args.raw_volume else args.grid_rows + 4
     expected_iter = source_rows_per_depth * args.depth
     if args.iter_cnt is None:
         args.iter_cnt = expected_iter
     elif args.iter_cnt != expected_iter:
+        mode_desc = "grid_rows * depth" if args.raw_volume else "(grid_rows + 4) * depth"
         raise ValueError(
-            f"--iter must equal (grid_rows + 4) * depth = {expected_iter}, got {args.iter_cnt}"
+            f"--iter must equal {mode_desc} = {expected_iter}, got {args.iter_cnt}"
         )
 
     data_dir = args.data_dir
@@ -718,6 +734,7 @@ def main() -> None:
         low=args.low,
         high=args.high,
         const_value=args.const_value,
+        raw_volume=args.raw_volume,
     )
 
     input_txt = data_dir / "input.txt"
@@ -727,7 +744,7 @@ def main() -> None:
     # Human-readable source rows, depth-major.
     input_mat = slices3d.reshape(-1, COL)
     write_matrix_txt(input_txt, input_mat)
-    write_plio64_i32(input_plio_txt, input_mat.reshape(-1))
+    write_plio128_i32(input_plio_txt, input_mat.reshape(-1))
 
     if not args.skip_gold:
         gold = gold_from_depth_slices(
@@ -740,7 +757,7 @@ def main() -> None:
             select_when=args.select_when,
             flat_oob=args.flat_oob,
         )
-        write_plio64_i32(gold_txt, gold.reshape(-1))
+        write_plio128_i32(gold_txt, gold.reshape(-1))
 
     if args.emit_debug_streams:
         dump_human_readable_inputs_depthwise(slices3d, data_dir, graph_id=args.graph_id)
@@ -748,9 +765,10 @@ def main() -> None:
 
     print(f"logical workload : {args.grid_rows} x {COL} x {args.depth}")
     print(f"host iter_cnt    : {args.iter_cnt}")
+    print(f"raw volume mode  : {args.raw_volume}")
     print(f"source rows/plane: {source_rows_per_depth}")
     print(f"input matrix     : {input_mat.shape[0]} x {input_mat.shape[1]}")
-    print(f"input plio64     : {input_mat.size // 2} lines")
+    print(f"input plio128    : {input_mat.size // 4} lines")
     print(f"written input    : {input_txt}")
     print(f"written plio     : {input_plio_txt}")
     if not args.skip_gold:
@@ -759,8 +777,8 @@ def main() -> None:
             print(f"formula params   : c={args.c_coeff}, row_offset={args.center_row_offset}, "
                   f"col_offset={args.col_offset}, select={args.select_when}, flat_oob={args.flat_oob}")
         print(f"gold output elems: {gold.shape[0]} x {gold.shape[1]} int32")
-        print(f"gold PLIO lines  : {gold.size // 2} lines, 2 int32 per line")
-        print("compare output   : drop first 4 rows / 512 plio64 lines of each depth plane")
+        print(f"gold PLIO lines  : {gold.size // 4} lines, 4 int32 per line")
+        print("compare output   : drop first 4 rows / 256 plio128 lines of each depth plane")
     if args.emit_debug_streams:
         print(f"debug stream len : each is {args.grid_rows * args.depth * COL} scalars")
 

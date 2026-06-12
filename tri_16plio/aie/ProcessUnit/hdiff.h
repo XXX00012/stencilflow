@@ -39,4 +39,4 @@ void hdiff_flux2(
     input_buffer<int32_t>& sub_pack,
     output_buffer<int32_t>& out);
 
-} 
+}

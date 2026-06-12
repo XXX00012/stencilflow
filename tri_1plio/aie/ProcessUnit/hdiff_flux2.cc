@@ -33,31 +33,38 @@ void hdiff_flux2(input_buffer<std::int32_t>& mask_pack,
   std::int32_t* __restrict sub_base  = sub_pack.data();
   std::int32_t* __restrict out_base  = out.data();
 
-  std::int32_t* __restrict sub_left  = sub_base + (0 * COL);
-  std::int32_t* __restrict sub_right = sub_base + (1 * COL);
-  std::int32_t* __restrict sub_up    = sub_base + (2 * COL);
-  std::int32_t* __restrict sub_down  = sub_base + (3 * COL);
-  std::int32_t* __restrict mask_left  =
-      mask_base + (0 * hdiff_cfg::kFluxMaskWordsPerRow);
-  std::int32_t* __restrict mask_right =
-      mask_base + (1 * hdiff_cfg::kFluxMaskWordsPerRow);
-  std::int32_t* __restrict mask_up =
-      mask_base + (2 * hdiff_cfg::kFluxMaskWordsPerRow);
-  std::int32_t* __restrict mask_down =
-      mask_base + (3 * hdiff_cfg::kFluxMaskWordsPerRow);
-  // data() points at the margin/history region followed by the current row.
-  std::int32_t* __restrict row2_base = raw_base + (1 * COL);
-
   v8int32 coeffs1 = *(v8int32*)weights1;
   v8int32 flux_out_coeff = *(v8int32*)flux_out_arr;
 
-  v8int32* __restrict ptr_out = nullptr;
-  v16int32 data_buf2 = null_v16int32();
+  for (unsigned r = 0; r < hdiff_cfg::kRowsPerCall; ++r) {
+    const unsigned in_off   = r * COL;
+    const unsigned sub_off  = r * hdiff_cfg::kFluxForwardPackRows * COL;
+    const unsigned mask_off = r * 4 * hdiff_cfg::kFluxMaskWordsPerRow;
+    const unsigned out_off  = r * COL;
 
-  data_buf2 = upd_w(data_buf2, 0, load_row_chunk(row2_base, 0));
-  data_buf2 = upd_w(data_buf2, 1, load_row_chunk(row2_base, 1));
+    std::int32_t* __restrict sub_left  = sub_base + sub_off + (0 * COL);
+    std::int32_t* __restrict sub_right = sub_base + sub_off + (1 * COL);
+    std::int32_t* __restrict sub_up    = sub_base + sub_off + (2 * COL);
+    std::int32_t* __restrict sub_down  = sub_base + sub_off + (3 * COL);
+    std::int32_t* __restrict mask_left  =
+        mask_base + mask_off + (0 * hdiff_cfg::kFluxMaskWordsPerRow);
+    std::int32_t* __restrict mask_right =
+        mask_base + mask_off + (1 * hdiff_cfg::kFluxMaskWordsPerRow);
+    std::int32_t* __restrict mask_up =
+        mask_base + mask_off + (2 * hdiff_cfg::kFluxMaskWordsPerRow);
+    std::int32_t* __restrict mask_down =
+        mask_base + mask_off + (3 * hdiff_cfg::kFluxMaskWordsPerRow);
+    // data() points at the margin/history region followed by the current row.
+    std::int32_t* __restrict row2_base = raw_base + in_off + (1 * COL);
+    std::int32_t* __restrict out_row   = out_base + out_off;
 
-  for (unsigned i = 0; i < COL / 8; ++i)
+    v8int32* __restrict ptr_out = nullptr;
+    v16int32 data_buf2 = null_v16int32();
+
+    data_buf2 = upd_w(data_buf2, 0, load_row_chunk(row2_base, 0));
+    data_buf2 = upd_w(data_buf2, 1, load_row_chunk(row2_base, 1));
+
+    for (unsigned i = 0; i < COL / 8; ++i)
     chess_prepare_for_pipelining
     chess_loop_range(1, ) {
       v8int32 flux_sub;
@@ -90,10 +97,11 @@ void hdiff_flux2(input_buffer<std::int32_t>& mask_pack,
           lmac8(final_output, data_buf2, 2, 0x76543210,
                 concat(coeffs1, undef_v8int32()), 0, 0x76543210);
 
-      ptr_out = (v8int32*)out_base + i;
+      ptr_out = (v8int32*)out_row + i;
       *ptr_out = srs(final_output, 0);
 
       data_buf2 = upd_w(data_buf2, 0, load_row_chunk(row2_base, i + 1));
       data_buf2 = upd_w(data_buf2, 1, load_row_chunk(row2_base, i + 2));
     }
+  }
 }

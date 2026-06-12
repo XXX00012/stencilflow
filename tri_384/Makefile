@@ -65,6 +65,9 @@ VPP_XO_FLAGS := -c -t $(TARGET) --platform $(BASE_PLATFORM) -k $(KERNEL) --save-
 
 	
 VPP_LINK_FLAGS := -l -t $(TARGET) --platform $(BASE_PLATFORM) $(GRAPH_O) $(KERNEL_XO) --save-temps -g --config $(CONFIG_FILE) -o $(XSA)
+# Relax only the TopPL CU clocks; keep platform clocks unchanged.
+PL_FREQ_HZ = 250000000
+VPP_LINK_FLAGS += --clock.freqHz $(PL_FREQ_HZ):TopPL_1.ap_clk,TopPL_2.ap_clk,TopPL_3.ap_clk,TopPL_4.ap_clk,TopPL_5.ap_clk,TopPL_6.ap_clk,TopPL_7.ap_clk,TopPL_8.ap_clk,TopPL_9.ap_clk,TopPL_10.ap_clk,TopPL_11.ap_clk,TopPL_12.ap_clk,TopPL_13.ap_clk,TopPL_14.ap_clk,TopPL_15.ap_clk,TopPL_16.ap_clk
 VPP_LINK_FLAGS += --vivado.impl.jobs 256
 
 VPP_FLAGS := $(VPP_LINK_FLAGS)
@@ -137,7 +140,8 @@ endif
 
 #AIE or X86 compilation
 $(GRAPH_O): $(GRAPH)
-	$(AIECC) $(AIE_FLAGS) $(GRAPH)
+	$(AIECC) $(AIE_FLAGS) -o $(GRAPH_O) $(GRAPH)
+	test -f $(GRAPH_O)
 #####################################################
 
 ########################################################
